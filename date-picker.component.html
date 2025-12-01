@@ -1,0 +1,138 @@
+<div class="date-picker-dialog" style="padding: 20px;">
+  
+  <h2 style="margin-top: 0; color: #1565C0;">
+    {{ editingGroup ? 'Edit Exam Group' : 'Add New Exam Group' }}
+  </h2>
+
+  <!-- Term & School Year Selector -->
+  <mat-form-field appearance="outline" style="width: 100%; margin-bottom: 15px;">
+    <mat-label>Term & School Year</mat-label>
+    <mat-select [(ngModel)]="selectedTermYear">
+      <mat-option *ngFor="let opt of termYearOptions" [value]="opt.value">
+        {{ opt.label }}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+
+  <!-- Group Name Input -->
+ <mat-form-field appearance="outline" style="width: 100%; margin-bottom: 15px;">
+  <mat-label>Exam Group Name</mat-label>
+  <mat-select [(ngModel)]="newGroupName">
+    <mat-option *ngFor="let groupName of examGroupOptions" [value]="groupName">
+      {{ groupName }}
+    </mat-option>
+  </mat-select>
+</mat-form-field>
+
+  <!-- Date Picker Inputs -->
+  <div style="margin-bottom: 20px;">
+    <h4 style="color: #666; margin-bottom: 10px;">Exam Dates</h4>
+    
+    <div *ngFor="let day of examDays; let i = index" style="margin-bottom: 15px;">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <!-- ✅ UPDATED MAT-FORM-FIELD WITH (ngModelChange) ⬇️ -->
+    <mat-form-field appearance="outline" style="flex: 1;">
+      <mat-label>Exam Date {{ i + 1 }}</mat-label>
+      <input 
+        matInput 
+        [matDatepicker]="picker" 
+        [(ngModel)]="day.date"
+        (ngModelChange)="onDateChange(day)"
+        [matDatepickerFilter]="dateFilter">
+      <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+      <mat-datepicker #picker></mat-datepicker>
+    </mat-form-field>
+    <!-- ✅ UPDATED MAT-FORM-FIELD WITH (ngModelChange) ⬆️ -->
+
+    <mat-checkbox [(ngModel)]="day.am" style="min-width: 60px;">AM</mat-checkbox>
+    <mat-checkbox [(ngModel)]="day.pm" style="min-width: 60px;">PM</mat-checkbox>
+
+        <button 
+          *ngIf="examDays.length > 1" 
+          mat-icon-button 
+          color="warn" 
+          (click)="removeDay(i)"
+          matTooltip="Remove this date">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+
+      <!-- Display weekday -->
+      <div *ngIf="day.date" style="margin-left: 10px; font-size: 12px; color: #666;">
+        {{ day.date | date: 'EEEE, MMMM d, yyyy' }}
+      </div>
+    </div>
+
+    <!-- Add Day Button -->
+    <div style="text-align: center; margin-top: 15px;">
+      <button 
+        mat-stroked-button 
+        color="primary" 
+        (click)="addDay()" 
+        [disabled]="examDays.length >= maxDays">
+        <mat-icon>add</mat-icon>
+        Add Another Day
+        <span *ngIf="examDays.length >= maxDays" style="font-size: 11px; margin-left: 5px;">
+          (Max {{ maxDays }} days)
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+    <button mat-button (click)="closeDialog()">
+      Cancel
+    </button>
+    <button 
+      mat-raised-button 
+      color="primary" 
+      (click)="saveGroup()" 
+      [disabled]="isFormInvalid()">
+      <mat-icon>save</mat-icon>
+      {{ editingGroup ? 'Update Group' : 'Save Group' }}
+    </button>
+  </div>
+
+  <!-- Validation Messages -->
+  <div *ngIf="isFormInvalid()" 
+       style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 13px; color: #856404;">
+    <mat-icon style="vertical-align: middle; font-size: 18px;">info</mat-icon>
+    <span style="margin-left: 5px;">
+      Please fill in all required fields: Term & Year, Group Name, and at least one Exam Date
+    </span>
+  </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
