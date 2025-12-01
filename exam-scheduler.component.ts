@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -220,196 +220,201 @@ ngOnInit() {
   }
 
 selectExamGroup(group: ExamGroup) {
-    console.log('🔵 selectExamGroup called for:', group.name);
+  console.log('🔵 selectExamGroup called for:', group.name);
+  
+  this.selectedExamGroup = group;
+  this.activeTerm = group.termYear || '';
+  
+  this.examDates = group.days
+    .map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '')
+    .filter(d => d !== '');
+  
+  this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
+  
+  this.sharedData.setSelectedExamGroup(group);
+  this.sharedData.setExamDates(group.days);
+  if (group.termYear) this.sharedData.setActiveTerm(group.termYear);
+  
+  const scheduleExists = this.hasScheduleForGroup(group.name, group.termYear || '');
+  console.log('📋 Schedule exists?', scheduleExists);
+  
+  if (scheduleExists) {
+    console.log('✅ Showing dialog to load saved schedule');
     
-    this.selectedExamGroup = group;
-    this.activeTerm = group.termYear || '';
-    
-    this.examDates = group.days
-      .map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '')
-      .filter(d => d !== '');
-    
-    this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
-    
-    this.sharedData.setSelectedExamGroup(group);
-    this.sharedData.setExamDates(group.days);
-    if (group.termYear) this.sharedData.setActiveTerm(group.termYear);
-    
-    // ✅ DEBUG: Check if schedule exists
-    const scheduleExists = this.hasScheduleForGroup(group.name, group.termYear || '');
-    console.log('📋 Schedule exists?', scheduleExists);
-    console.log('📋 Checking key:', `schedule_${group.name}_${group.termYear}`);
-    
-    if (scheduleExists) {
-      console.log('✅ Showing dialog to load saved schedule');
+    // ✅ ANGULAR 8 COMPATIBLE: Use type and .then()
+    Swal.fire({
+      title: 'Saved Schedule Found!',
+      text: 'This exam group already has a generated schedule. Would you like to load it?',
+      type: 'question',  // ✅ Angular 8 uses 'type' not 'icon'
+      showCancelButton: true,
+      confirmButtonText: '📋 Load Saved Schedule',
+      cancelButtonText: '✖ Cancel',
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#6b7280'
+    }).then((result) => {  // ✅ Use .then() for Angular 8
+      console.log('📘 Dialog result:', result);
       
-      Swal.fire({
-        title: 'Saved Schedule Found!',
-        text: 'This exam group already has a generated schedule. Would you like to load it?',
-        type: 'question',
-        showCancelButton: true,
-        confirmButtonText: '📋 Load Saved Schedule',
-        cancelButtonText: '✕ Cancel',
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#6b7280'
-      }).then((result: any) => {
-        console.log('🔘 Dialog result:', result);
+      // ✅ ANGULAR 8 COMPATIBLE: Check result.value
+      if (result.value) {
+        console.log('✅ User clicked Load Saved Schedule');
         
-        if (result.value) {
-          console.log('✅ User clicked Load Saved Schedule');
+        if (this.loadScheduleForGroup(group.name, group.termYear || '')) {
+          console.log('✅ Schedule loaded successfully');
           
-          if (this.loadScheduleForGroup(group.name, group.termYear || '')) {
-            console.log('✅ Schedule loaded successfully');
-            console.log('📊 Generated schedule length:', this.generatedSchedule.length);
-            
-            // Prepare the simple schedule data
-            this.generateSimpleScheduleData();
-            
-            // Reset all filters to default
-            this.selectedCourse = 'ALL';
-            this.selectedYearLevel = 'ALL';
-            this.selectedDepartment = 'ALL';
-            this.selectedDay = 'ALL';
-            
-            // Navigate directly to complete list view
-            console.log('🔄 Setting currentStep to simpleschedule');
+          // Prepare data
+          this.generateSimpleScheduleData();
+          
+          // Reset filters
+          this.selectedCourse = 'ALL';
+          this.selectedYearLevel = 'ALL';
+          this.selectedDepartment = 'ALL';
+          this.selectedDay = 'ALL';
+          this.searchTerm = '';
+          
+          // ✅ Use setTimeout for safer navigation
+          setTimeout(() => {
             this.currentStep = 'simpleschedule';
-            
-            this.showToast('Success', `Loaded saved schedule for "${group.name}"`);
             this.cdr.detectChanges();
             
             console.log('✅ Navigation complete. Current step:', this.currentStep);
-          } else {
-            console.error('❌ Failed to load schedule');
-            this.showToast('Error', 'Failed to load saved schedule');
-          }
+          }, 100);
+          
+          this.showToast('Success', `Loaded saved schedule for "${group.name}"`);
         } else {
-          console.log('❌ User clicked Cancel');
-          this.showToast('Success', `Selected "${group.name}" - Ready to load API data`);
+          console.error('❌ Failed to load schedule');
+          this.showToast('Error', 'Failed to load saved schedule');
         }
-      });
-    } else {
-      console.log('ℹ️ No saved schedule found - just selecting group');
-      this.showToast('Success', `Selected "${group.name}" with ${this.examDates.length} exam days`);
-    }
-    
-    this.showExamGroupManager = false;
-  }
-
-  editGroup(group: ExamGroup) {
-    const originalData = {
-      name: group.name,
-      termYear: group.termYear,
-      daysCount: group.days.length,
-      days: JSON.stringify(group.days)
-    };
-    
-    const dialogRef = this.dialog.open(DatePickerComponent, {
-      width: '800px',
-      maxHeight: '90vh',
-      data: { group, mode: 'edit' }
+      } else {
+        console.log('❌ User clicked Cancel');
+        this.showToast('Success', `Selected "${group.name}" - Ready to load API data`);
+      }
     });
+  } else {
+    console.log('ℹ️ No saved schedule found - just selecting group');
+    this.showToast('Success', `Selected "${group.name}" with ${this.examDates.length} exam days`);
+  }
+  
+  this.showExamGroupManager = false;
+}
 
-    dialogRef.afterClosed().subscribe((result) => {
-      this.loadSavedExamGroups();
+editGroup(group: ExamGroup) {
+  const originalData = {
+    name: group.name,
+    termYear: group.termYear,
+    daysCount: group.days.length,
+    days: JSON.stringify(group.days)
+  };
+  
+  const dialogRef = this.dialog.open(DatePickerComponent, {
+    width: '800px',
+    maxHeight: '90vh',
+    data: { group, mode: 'edit' }
+  });
+
+  dialogRef.afterClosed().subscribe((result) => {
+    this.loadSavedExamGroups();
+    
+    if (result && result.success) {
+      const updatedGroup = result.group;
+      const datesChanged = 
+        originalData.daysCount !== updatedGroup.days.length ||
+        originalData.days !== JSON.stringify(updatedGroup.days);
       
-      if (result && result.success) {
-        const updatedGroup = result.group;
-        const datesChanged = 
-          originalData.daysCount !== updatedGroup.days.length ||
-          originalData.days !== JSON.stringify(updatedGroup.days);
-        
-        const hasSchedule = this.hasScheduleForGroup(updatedGroup.name, updatedGroup.termYear || '');
-        
-        if (hasSchedule && datesChanged) {
-          Swal.fire({
-            title: 'Schedule Needs Update',
-            text: `You changed the exam dates for "${updatedGroup.name}". The existing schedule is now outdated. Would you like to regenerate the schedule now?`,
-            type: 'question',
-            showCancelButton: true,
-            confirmButtonText: '🔄 Regenerate Now',
-            cancelButtonText: '📋 Keep Old Schedule',
-            confirmButtonColor: '#10b981',
-            cancelButtonColor: '#6b7280'
-          }).then((choice: any) => {
-            if (choice.value) {
-              this.regenerateScheduleForGroup(updatedGroup);
-            } else {
-              this.updateScheduleDateMappings(updatedGroup);
-              this.showToast('Success', `Schedule kept for "${updatedGroup.name}" with updated dates!`, 'success');
-            }
-          });
-        } else {
-          this.showToast('Success', `Updated "${updatedGroup.name}" successfully`);
-        }
-        
-        if (this.selectedExamGroup && this.selectedExamGroup.name === group.name) {
-          const reloadedGroup = this.savedExamGroups.find(g => g.name === updatedGroup.name);
-          if (reloadedGroup) {
-            this.selectedExamGroup = reloadedGroup;
-            this.activeTerm = reloadedGroup.termYear || '';
-            this.examDates = reloadedGroup.days
-              .map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '')
-              .filter(d => d !== '');
-            this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
-            this.activeDay = this.days[0] || 'Day 1';
-            
-            this.sharedData.setSelectedExamGroup(reloadedGroup);
-            this.sharedData.setExamDates(reloadedGroup.days);
-            if (reloadedGroup.termYear) this.sharedData.setActiveTerm(reloadedGroup.termYear);
+      const hasSchedule = this.hasScheduleForGroup(updatedGroup.name, updatedGroup.termYear || '');
+      
+      if (hasSchedule && datesChanged) {
+        // ✅ ANGULAR 8 COMPATIBLE
+        Swal.fire({
+          title: 'Schedule Needs Update',
+          text: `You changed the exam dates for "${updatedGroup.name}". The existing schedule is now outdated. Would you like to regenerate the schedule now?`,
+          type: 'question',  // ✅ Angular 8 uses 'type'
+          showCancelButton: true,
+          confirmButtonText: '🔄 Regenerate Now',
+          cancelButtonText: '📋 Keep Old Schedule',
+          confirmButtonColor: '#10b981',
+          cancelButtonColor: '#6b7280'
+        }).then((choice) => {  // ✅ Use .then()
+          if (choice.value) {  // ✅ Check choice.value
+            this.regenerateScheduleForGroup(updatedGroup);
+          } else {
+            this.updateScheduleDateMappings(updatedGroup);
+            this.showToast('Success', `Schedule kept for "${updatedGroup.name}" with updated dates!`, 'success');
           }
-        }
+        });
+      } else {
+        this.showToast('Success', `Updated "${updatedGroup.name}" successfully`);
       }
       
-      this.cdr.detectChanges();
-    });
-  }
+      if (this.selectedExamGroup && this.selectedExamGroup.name === group.name) {
+        const reloadedGroup = this.savedExamGroups.find(g => g.name === updatedGroup.name);
+        if (reloadedGroup) {
+          this.selectedExamGroup = reloadedGroup;
+          this.activeTerm = reloadedGroup.termYear || '';
+          this.examDates = reloadedGroup.days
+            .map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '')
+            .filter(d => d !== '');
+          this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
+          this.activeDay = this.days[0] || 'Day 1';
+          
+          this.sharedData.setSelectedExamGroup(reloadedGroup);
+          this.sharedData.setExamDates(reloadedGroup.days);
+          if (reloadedGroup.termYear) this.sharedData.setActiveTerm(reloadedGroup.termYear);
+        }
+      }
+    }
+    
+    this.cdr.detectChanges();
+  });
+}
 
-  deleteGroup(groupName: string) {
-    if (confirm(`Delete exam group "${groupName}"?`)) {
-      const groupToDelete = this.savedExamGroups.find(g => g.name === groupName);
-      const currentlySelected = this.sharedData.getSelectedExamGroup();
-      const isSelectedGroup = currentlySelected && currentlySelected.name === groupName;
+deleteGroup(groupName: string) {
+  // ✅ ANGULAR 8 COMPATIBLE: Use native confirm for simple cases
+  const confirmDelete = confirm(`Delete exam group "${groupName}"? This will also delete any saved schedules.`);
+  
+  if (confirmDelete) {
+    const groupToDelete = this.savedExamGroups.find(g => g.name === groupName);
+    const currentlySelected = this.sharedData.getSelectedExamGroup();
+    const isSelectedGroup = currentlySelected && currentlySelected.name === groupName;
 
-      this.savedExamGroups = this.savedExamGroups.filter(g => g.name !== groupName);
-      localStorage.setItem('examGroups', JSON.stringify(this.savedExamGroups));
+    this.savedExamGroups = this.savedExamGroups.filter(g => g.name !== groupName);
+    localStorage.setItem('examGroups', JSON.stringify(this.savedExamGroups));
+    
+    if (groupToDelete && groupToDelete.termYear) {
+      const scheduleKey = `schedule_${groupName}_${groupToDelete.termYear}`;
+      localStorage.removeItem(scheduleKey);
+    }
+    
+    this.loadSavedExamGroups();
+
+    if (isSelectedGroup) {
+      this.sharedData.clearExamDates();
+      this.sharedData.clearSelectedExamGroup();
+      this.sharedData.clearActiveTerm();
       
       if (groupToDelete && groupToDelete.termYear) {
-        const scheduleKey = `schedule_${groupName}_${groupToDelete.termYear}`;
-        localStorage.removeItem(scheduleKey);
+        this.sharedData.clearStudentMappingForGroup(groupName, groupToDelete.termYear);
       }
       
-      this.loadSavedExamGroups();
-
-      if (isSelectedGroup) {
-        this.sharedData.clearExamDates();
-        this.sharedData.clearSelectedExamGroup();
-        this.sharedData.clearActiveTerm();
-        
-        if (groupToDelete && groupToDelete.termYear) {
-          this.sharedData.clearStudentMappingForGroup(groupName, groupToDelete.termYear);
-        }
-        
-        this.sharedData.clearStudentMapping();
-        this.selectedExamGroup = null;
-        this.examDates = ['', '', ''];
-        this.activeTerm = '';
-        
-        this.global.swalSuccess(`Deleted "${groupName}". All associated data has been cleared.`);
-      } else {
-        if (groupToDelete && groupToDelete.termYear) {
-          this.sharedData.clearStudentMappingForGroup(groupName, groupToDelete.termYear);
-        }
-        this.global.swalSuccess(`Deleted "${groupName}".`);
+      this.sharedData.clearStudentMapping();
+      this.selectedExamGroup = null;
+      this.examDates = ['', '', ''];
+      this.activeTerm = '';
+      
+      this.global.swalSuccess(`Deleted "${groupName}". All associated data has been cleared.`);
+    } else {
+      if (groupToDelete && groupToDelete.termYear) {
+        this.sharedData.clearStudentMappingForGroup(groupName, groupToDelete.termYear);
       }
+      this.global.swalSuccess(`Deleted "${groupName}".`);
     }
   }
+}
 
   // ===================================================================
   // DATA LOADING
   // ===================================================================
   
-  async loadExamData() {
+async loadExamData() {
   if (!this.activeTerm) {
     this.showToast('Error', 'Please select a term first', 'destructive');
     return false;
@@ -420,7 +425,6 @@ selectExamGroup(group: ExamGroup) {
   try {
     console.log('🔍 DEBUG: Requesting exams for term:', this.activeTerm);
     
-    // ✅ CHANGED: Use CodeSummary endpoint instead
     const response: any = await this.api.getCodeSummaryReport(this.activeTerm).toPromise();
     
     let parsed;
@@ -444,48 +448,65 @@ selectExamGroup(group: ExamGroup) {
 
     console.log('✅ API returned', data.length, 'exam records');
 
-    if (data.length > 0) {
-      console.log('🔍 DEBUG: First API item:', data[0]);
-      console.log('🔍 DEBUG: Available field names:', Object.keys(data[0]));
-    } else {
-      console.error('❌ DEBUG: API returned ZERO records!');
+    if (data.length === 0) {
+      console.error('❌ API returned ZERO records!');
       this.showToast('Error', 'No exam data found for this term', 'destructive');
       return false;
     }
 
+    if (data.length > 0) {
+      console.log('🔍 First API item:', data[0]);
+      console.log('🔍 Available fields:', Object.keys(data[0]));
+    }
+
     this.rawCodes = data;
 
-    // ✅ FIXED: Map using actual field names from API
-    // Around line 410 - FIXED mapping
-this.exams = data
-  .filter((item: any) => {
-    const deptCode = (item.deptCode || item.dept || '').toUpperCase();
-    return deptCode !== 'SAS';
-  })
-  .map((item: any) => ({
-    code: item.codeNo || '',
-    version: item.version || '1',
-    subjectId: item.subjectId || '',
-    title: item.subjectTitle || '', // ✅ FIXED: was descriptiveTitle
-    course: (item.course || '').trim(),
-    yearLevel: parseInt(item.yearLevel || item.year || '1'),
-    lec: parseInt(item.lecUnits || item.lec || '3'),
-    oe: parseInt(item.oe || '0'),
-    dept: (item.deptCode || item.dept || '').toUpperCase(), // ✅ FIXED: use deptCode
-    instructor: item.instructor || 'TBA',
-    studentCount: parseInt(item.classSize || item.studentCount || '0'),
-    isRegular: true,
-    campus: item.roomCampusLocation || item.campus || 'MAIN',
-    lectureRoom: item.roomNumber || '',
-    lectureBuilding: this.extractBuilding(item.roomNumber || '')
-  }))
-  .filter((exam: Exam) => {
-    if (!exam.subjectId || !exam.course) {
-      console.warn('⚠️ Filtered out exam:', exam);
-      return false;
-    }
-    return true;
-  });
+    // ✅ IMPROVED: Multiple fallback field names for Angular 8 compatibility
+    this.exams = data
+      .filter((item: any) => {
+        const deptCode = (item.deptCode || item.dept || item.DEPT_CODE || item.DEPT || '').toUpperCase();
+        return deptCode !== 'SAS';
+      })
+      .map((item: any) => {
+        // Try multiple field name variations
+        const subjectId = item.subjectId || item.SUBJECT_ID || item.subject_id || '';
+        const title = item.subjectTitle || item.descriptiveTitle || item.SUBJECT_TITLE || item.DESCRIPTIVE_TITLE || item.title || '';
+        const code = item.codeNo || item.CODE_NO || item.code || item.CODE || '';
+        const course = (item.course || item.COURSE || '').trim();
+        const yearLevel = parseInt(item.yearLevel || item.year || item.YEAR_LEVEL || item.YEAR || '1', 10);
+        const dept = (item.deptCode || item.dept || item.DEPT_CODE || item.DEPT || '').toUpperCase();
+        const instructor = item.instructor || item.INSTRUCTOR || 'TBA';
+        const lecUnits = parseInt(item.lecUnits || item.lec || item.LEC_UNITS || item.LEC || '3', 10);
+        const oe = parseInt(item.oe || item.OE || '0', 10);
+        const studentCount = parseInt(item.classSize || item.studentCount || item.CLASS_SIZE || item.STUDENT_COUNT || '0', 10);
+        const campus = item.roomCampusLocation || item.campus || item.CAMPUS || 'MAIN';
+        const roomNumber = item.roomNumber || item.ROOM_NUMBER || item.room || '';
+        
+        return {
+          code: code,
+          version: item.version || '1',
+          subjectId: subjectId,
+          title: title,
+          course: course,
+          yearLevel: yearLevel,
+          lec: lecUnits,
+          oe: oe,
+          dept: dept,
+          instructor: instructor,
+          studentCount: studentCount,
+          isRegular: true,
+          campus: campus,
+          lectureRoom: roomNumber,
+          lectureBuilding: this.extractBuilding(roomNumber)
+        };
+      })
+      .filter((exam: Exam) => {
+        if (!exam.subjectId || !exam.course) {
+          console.warn('⚠️ Filtered out exam with missing fields:', exam);
+          return false;
+        }
+        return true;
+      });
 
     this.rooms = this.generateRoomList();
 
@@ -494,10 +515,11 @@ this.exams = data
 
     if (this.exams.length === 0) {
       console.error('❌ No exams were successfully processed!');
+      this.showToast('Error', 'No valid exams after processing', 'destructive');
       return false;
     }
 
-    console.log('🔍 DEBUG: Sample of first 3 processed exams:');
+    console.log('🔍 Sample of first 3 processed exams:');
     this.exams.slice(0, 3).forEach((exam, idx) => {
       console.log(`  ${idx + 1}.`, exam);
     });
@@ -506,7 +528,8 @@ this.exams = data
 
   } catch (error) {
     console.error('❌ Error loading exam data:', error);
-    this.showToast('Error', 'Failed to load exam data from API', 'destructive');
+    const errorMessage = error && error.message ? error.message : 'Unknown error occurred';
+    this.showToast('Error', `Failed to load exam data: ${errorMessage}`, 'destructive');
     return false;
   } finally {
     this.isLoadingApi = false;
@@ -708,12 +731,13 @@ async generateExamSchedule() {
     return;
   }
 
+  // ✅ ANGULAR 8 COMPATIBLE: Use then() instead of await
   Swal.fire({
     title: '🔄 Loading Exam Data',
     text: 'Fetching exam data from API...',
     allowOutsideClick: false,
     allowEscapeKey: false,
-    onOpen: () => {
+    onBeforeOpen: () => {  // ✅ Angular 8 compatible
       Swal.showLoading();
     }
   });
@@ -723,12 +747,13 @@ async generateExamSchedule() {
     
     if (!dataLoaded || this.exams.length === 0) {
       Swal.close();
-      Swal.fire({
-        title: 'Error',
-        text: 'No exam data loaded. Please check the API connection.',
-        type: 'error',
-        confirmButtonText: 'OK'
-      });
+      
+      // ✅ ANGULAR 8 COMPATIBLE: Simple fire call
+      Swal.fire(
+        'Error',
+        'No exam data loaded. Please check the API connection.',
+        'error'
+      );
       return;
     }
 
@@ -737,11 +762,12 @@ async generateExamSchedule() {
       text: `Processing ${this.exams.length} exams...`,
       allowOutsideClick: false,
       allowEscapeKey: false,
-      onOpen: () => {
+      onBeforeOpen: () => {
         Swal.showLoading();
       }
     });
 
+    // Small delay to ensure UI updates
     await new Promise(resolve => setTimeout(resolve, 100));
 
     const numDays = this.examDates.filter(d => d).length;
@@ -757,74 +783,79 @@ async generateExamSchedule() {
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     const stats = this.calculateScheduleStats();
 
-    // ✅ Close loading dialog first
     Swal.close();
     
-    // ✅ Small delay to ensure DOM is ready
+    // ✅ CRITICAL: Prepare data BEFORE showing dialog
+    console.log('📋 Preparing schedule data...');
+    this.generateSimpleScheduleData();
+    
+    // Reset filters
+    this.selectedCourse = 'ALL';
+    this.selectedYearLevel = 'ALL';
+    this.selectedDepartment = 'ALL';
+    this.selectedDay = 'ALL';
+    this.searchTerm = '';
+    
+    // Force change detection
+    this.cdr.detectChanges();
+    
+    // Small delay to ensure data is ready
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // ✅ Show success dialog with button
-    const result = await Swal.fire({
-  title: '✅ Schedule Generated Successfully!',
-  html: `
-    <div style="text-align: left; padding: 15px;">
-      <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
-        <p style="margin: 0; color: #2e7d32;"><strong>⏱️ Generation Time: ${duration} seconds</strong></p>
-      </div>
-      
-      <h4 style="color: #1565C0; margin-bottom: 10px;">📊 Statistics:</h4>
-      <ul style="list-style: none; padding: 0;">
-        <li>✅ Total Exams: <strong>${this.exams.length}</strong></li>
-        <li>✅ Scheduled: <strong>${stats.scheduled}</strong> (${stats.coverage}%)</li>
-        <li>📅 Days: <strong>${numDays}</strong></li>
-        <li>🏫 Rooms Used: <strong>${stats.roomsUsed}</strong></li>
-        <li>⚠️ Conflicts: <strong>${stats.conflicts}</strong></li>
-      </ul>
-    </div>
-  `,
-  type: 'success',
-  showCancelButton: true,
-  confirmButtonText: '📋 View Schedule',
-  cancelButtonText: '✖ Close',
-  confirmButtonColor: '#10b981',
-  cancelButtonColor: '#6b7280',
-  allowOutsideClick: false
-});
-
-    // ✅ CRITICAL FIX: Navigate immediately when button is clicked
-    if (result.value) {
-  console.log('🔍 Navigating to schedule view...');
-  console.log('🔍 Generated Schedule Length:', this.generatedSchedule.length);
-      
-      // Then prepare the data
-      this.generateSimpleScheduleData();
-      
-      // Reset filters
-       this.selectedCourse = 'ALL';
-       this.selectedYearLevel = 'ALL';
-       this.selectedDepartment = 'ALL';
-      
-       // Set the step AFTER data is ready
-      this.currentStep = 'simpleschedule';
-
-
-      // Force multiple change detections
-      this.cdr.detectChanges();
-      
-      // Small delay and another change detection
-      console.log('✅ Navigation complete. Current step:', this.currentStep);
-    }
+    // ✅ ANGULAR 8 COMPATIBLE: Use .then() instead of await
+    Swal.fire({
+      title: '✅ Schedule Generated Successfully!',
+      html: `
+        <div style="text-align: left; padding: 15px;">
+          <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <p style="margin: 0; color: #2e7d32;"><strong>⏱️ Generation Time: ${duration} seconds</strong></p>
+          </div>
+          
+          <h4 style="color: #1565C0; margin-bottom: 10px;">📊 Statistics:</h4>
+          <ul style="list-style: none; padding: 0;">
+            <li>✅ Total Exams: <strong>${this.exams.length}</strong></li>
+            <li>✅ Scheduled: <strong>${stats.scheduled}</strong> (${stats.coverage}%)</li>
+            <li>📅 Days: <strong>${numDays}</strong></li>
+            <li>🏫 Rooms Used: <strong>${stats.roomsUsed}</strong></li>
+            <li>⚠️ Conflicts: <strong>${stats.conflicts}</strong></li>
+          </ul>
+        </div>
+      `,
+      type: 'success',  // ✅ Angular 8 uses 'type' not 'icon'
+      showCancelButton: true,
+      confirmButtonText: '📋 View Schedule',
+      cancelButtonText: '✖ Close',
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false
+    }).then((result) => {  // ✅ Use .then() for Angular 8
+      // ✅ ANGULAR 8 COMPATIBLE: Check result.value
+      if (result.value) {
+        console.log('🎯 User clicked View Schedule - navigating NOW');
+        
+        // Use setTimeout for safer navigation in Angular 8
+        setTimeout(() => {
+          this.currentStep = 'simpleschedule';
+          this.cdr.detectChanges();
+          
+          console.log('✅ Navigation complete');
+          console.log('📊 Current step:', this.currentStep);
+          console.log('📊 Schedule length:', this.generatedSchedule.length);
+          console.log('📊 Filtered length:', this.getFilteredSchedule().length);
+        }, 0);
+      }
+    });
 
   } catch (error) {
     console.error('❌ Error generating schedule:', error);
     Swal.close();
     
-    Swal.fire({
-      title: 'Error',
-      text: 'Failed to generate schedule. Check console for details.',
-      type: 'error',
-      confirmButtonText: 'OK'
-    });
+    // ✅ ANGULAR 8 COMPATIBLE: Simple fire call
+    Swal.fire(
+      'Error',
+      'Failed to generate schedule. Check console for details.',
+      'error'
+    );
   }
 }
 
@@ -895,36 +926,38 @@ async generateExamSchedule() {
   // SCHEDULE REGENERATION
   // ===================================================================
   
-  regenerateScheduleForGroup(group: ExamGroup) {
-    this.selectedExamGroup = group;
-    this.activeTerm = group.termYear || '';
-    this.examDates = group.days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '').filter(d => d !== '');
-    this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
-    this.activeDay = this.days[0] || 'Day 1';
-    
-    this.sharedData.setSelectedExamGroup(group);
-    this.sharedData.setExamDates(group.days);
-    if (group.termYear) this.sharedData.setActiveTerm(group.termYear);
-    
-    if (this.exams.length > 0 && this.rooms.length > 0) {
-      this.clearScheduleForGroup(group.name, group.termYear || '');
-      this.generateExamSchedule();
-    } else {
-      Swal.fire({
-        title: 'Load Exam Data First',
-        html: '<p>To regenerate the schedule, you need to load exam data from the API first.</p><br><p>Would you like to load the data now?</p>',
-        showCancelButton: true,
-        confirmButtonText: 'Load Data Now',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#3b82f6'
-      }).then((choice) => {
-        if (choice.value) {
-          this.currentStep = 'import';
-          this.showToast('Info', 'Click "Load Exam Data from API" to load data, then generate schedule', 'info');
-        }
-      });
-    }
+regenerateScheduleForGroup(group: ExamGroup) {
+  this.selectedExamGroup = group;
+  this.activeTerm = group.termYear || '';
+  this.examDates = group.days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '').filter(d => d !== '');
+  this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
+  this.activeDay = this.days[0] || 'Day 1';
+  
+  this.sharedData.setSelectedExamGroup(group);
+  this.sharedData.setExamDates(group.days);
+  if (group.termYear) this.sharedData.setActiveTerm(group.termYear);
+  
+  if (this.exams.length > 0 && this.rooms.length > 0) {
+    this.clearScheduleForGroup(group.name, group.termYear || '');
+    this.generateExamSchedule();
+  } else {
+    // ✅ ANGULAR 8 COMPATIBLE
+    Swal.fire({
+      title: 'Load Exam Data First',
+      html: '<p>To regenerate the schedule, you need to load exam data from the API first.</p><br><p>Would you like to load the data now?</p>',
+      type: 'question',  // ✅ Angular 8 uses 'type'
+      showCancelButton: true,
+      confirmButtonText: 'Load Data Now',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#3b82f6'
+    }).then((choice) => {  // ✅ Use .then()
+      if (choice.value) {  // ✅ Check choice.value
+        this.currentStep = 'import';
+        this.showToast('Info', 'Click "Load Exam Data from API" to load data, then generate schedule', 'info');
+      }
+    });
   }
+}
 
   clearScheduleForGroup(groupName: string, termYear: string) {
     const key = `schedule_${groupName}_${termYear}`;
@@ -1046,6 +1079,7 @@ saveCurrentSchedule() {
     );
   }
 
+  // ✅ ANGULAR 8 COMPATIBLE: Use type instead of icon
   Swal.fire({
     title: '✅ Schedule Saved!',
     html: `
@@ -1058,7 +1092,7 @@ saveCurrentSchedule() {
         <p style="color: #666; font-size: 14px;">Next time you select this exam group, you can load this schedule directly!</p>
       </div>
     `,
-    type: 'success',
+    type: 'success',  // ✅ Angular 8 uses 'type'
     confirmButtonText: 'OK',
     confirmButtonColor: '#10b981'
   });
@@ -1675,14 +1709,7 @@ downloadRoomGridExcel() {
   this.cdr.detectChanges();
   
   console.log('✅ Navigated to simple schedule view');
-}iewSimpleSchedule() {
-  console.log('📋 viewSimpleSchedule() called');
-  console.log('📋 Schedule length:', this.generatedSchedule.length);
-  
-  if (this.generatedSchedule.length === 0) {
-    this.showToast('Error', 'No schedule data available', 'destructive');
-    return;
-  }
+
   
   // Prepare data
   this.generateSimpleScheduleData();
