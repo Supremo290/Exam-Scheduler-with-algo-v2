@@ -51,7 +51,7 @@
           </button>
         </div>
 
-        <!-- ✅ Always show table with headers -->
+        <!-- table with headers -->
         <div style="max-height: 400px; overflow-y: auto;">
           <table class="apptable" style="width: 100%;">
             <thead>
@@ -60,6 +60,7 @@
                 <th style="width: 150px;">Exam Period</th>
                 <th>Exam Dates</th>
                 <th style="width: 80px; text-align: center;">Use</th>
+                <th style="width: 100px; text-align: center;">Duplicate</th>
                 <th style="width: 80px; text-align: center;">Edit</th>
                 <th style="width: 80px; text-align: center;">Delete</th>
               </tr>
@@ -67,7 +68,7 @@
             <tbody>
               <!-- Empty state message inside table -->
               <tr *ngIf="savedExamGroups.length === 0">
-                <td colspan="6" style="text-align: center; padding: 30px; color: #999; font-style: italic;">
+                <td colspan="7" style="text-align: center; padding: 30px; color: #999; font-style: italic;">
                   No exam groups saved yet. Click "Add Dates" to create one.
                 </td>
               </tr>
@@ -94,6 +95,17 @@
                     matTooltip="Use this group"
                     [disabled]="selectedExamGroup && selectedExamGroup.name === group.name">
                     <mat-icon>{{ selectedExamGroup && selectedExamGroup.name === group.name ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                  </button>
+                </td>
+
+                <!-- Duplicate Button -->
+                <td style="text-align: center;">
+                  <button 
+                    mat-icon-button 
+                    color="accent"
+                    (click)="duplicateGroup(group)" 
+                    matTooltip="Duplicate this exam group">
+                    <mat-icon>content_copy</mat-icon>
                   </button>
                 </td>
                 
@@ -205,10 +217,10 @@
       </span>
     </p>
 
-    <!-- ✅ FIXED: Scrollable container with proper table layout -->
+    <!-- Scrollable container with proper table layout -->
     <div style="overflow-x: auto; overflow-y: auto; max-height: 600px; border: 1px solid #ddd; margin-top: 20px;">
       <table style="width: 100%; min-width: 1500px; border-collapse: collapse; font-size: 14px;">
-        <!-- ✅ FIXED: Sticky header with proper widths -->
+        <!--  Sticky header with proper widths -->
         <thead style="position: sticky; top: 0; background-color: #2c3e50; z-index: 10;">
           <tr>
             <th style="padding: 12px 8px; color: white; text-align: left; width: 80px; min-width: 80px; border: 1px solid #445566;">Code</th>
@@ -320,7 +332,7 @@
     </div>
   </div>
 
-  <!-- ✅ STEP 2B: SIMPLE SCHEDULE VIEW (NOW A SIBLING!) -->
+  <!-- ✅ STEP 2B: SIMPLE SCHEDULE VIEW -->
   <div *ngIf="currentStep === 'simpleschedule'" class="card">
     <div class="card-header">
       <h2>Exam Schedule - Complete List</h2>
@@ -334,27 +346,27 @@
       </div>
     </div>
 
-<!-- ✅ UPDATED FILTERS: Added Department, Day, and Search -->
+    <!-- ✅ UPDATED FILTERS: Added Department, Day, and Search -->
     <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0; display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
       
-<!-- Search Box -->
-<div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 250px;">
-  <label style="font-weight: 600; color: #333;">🔍 Search:</label>
-  <input 
-    type="text"
-    [(ngModel)]="searchTerm"
-    (input)="onSearchInput()"
-    placeholder="Search by Subject ID, Code, or Title..."
-    class="form-control"
-    style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-  <button 
-    *ngIf="searchTerm"
-    (click)="clearSearch()"
-    style="padding: 8px 12px; background-color: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;"
-    title="Clear search">
-    ✕
-  </button>
-</div>
+      <!-- Search Box -->
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 250px;">
+        <label style="font-weight: 600; color: #333;">🔍 Search:</label>
+        <input 
+          type="text"
+          [(ngModel)]="searchTerm"
+          (input)="onSearchInput()"
+          placeholder="Search by Subject ID, Code, or Title..."
+          class="form-control"
+          style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <button 
+          *ngIf="searchTerm"
+          (click)="clearSearch()"
+          style="padding: 8px 12px; background-color: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;"
+          title="Clear search">
+          ✕
+        </button>
+      </div>
       
       <!-- Course Filter -->
       <div style="display: flex; align-items: center; gap: 10px;">
@@ -511,6 +523,9 @@
       <button class="btn btn-primary" (click)="viewRoomScheduleGrid()">
         📅 View Room Grid
       </button>
+      <button class="btn btn-primary" (click)="goToStep('proctor')">
+        👥 Proctor Assignment
+      </button>
       <button class="btn btn-success" (click)="saveCurrentSchedule()" style="background-color: #10b981;">
         💾 Save Schedule
       </button>
@@ -546,280 +561,543 @@
     </div>
   </div>
 
-  <!-- ✅ NEW: STEP 2D - STUDENT MAPPING -->
+  <!-- ✅ STEP 2C: STUDENT MAPPING -->
   <div *ngIf="currentStep === 'studentmapping'" class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; background-color: #f8f9fa; border-bottom: 2px solid #dee2e6; margin-bottom: 20px;">
       <h2 style="margin: 0; color: #2c3e50;">📚 Student Mapping - Exam Schedule by Program & Year</h2>
       <div style="display: flex; gap: 10px;">
         <button 
-          (click)="goToStep('simpleschedule')" style="padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
-      ⬅ Back to Complete List
-    </button>
-    <button 
-      (click)="downloadStudentMappingExcel()"
-      style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-      📥 Download Excel
-    </button>
-  </div>
-</div>
+          (click)="goToStep('simpleschedule')" 
+          style="padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          ⬅ Back to Complete List
+        </button>
+        <button 
+          (click)="downloadStudentMappingExcel()"
+          style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          📥 Download Excel
+        </button>
+      </div>
+    </div>
 
-<!-- Info Banner -->
-<div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
-  <p style="margin: 0; color: #1565C0;">
-    <strong>ℹ️ Student Mapping View:</strong> Shows which subjects each program-year combination has scheduled at each time slot across all exam days.
-  </p>
-</div>
+    <!-- Info Banner -->
+    <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+      <p style="margin: 0; color: #1565C0;">
+        <strong>ℹ️ Student Mapping View:</strong> Shows which subjects each program-year combination has scheduled at each time slot across all exam days.
+      </p>
+    </div>
 
-<!-- Legend -->
-<div class="legend" style="margin: 20px 0;">
-  <h4>Department Colors:</h4>
-  <div class="legend-items">
-    <span class="legend-item" style="background-color: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SACE</span>
-    <span class="legend-item" style="background-color: #facc15; color: black; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SABH</span>
-    <span class="legend-item" style="background-color: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SECAP</span>
-    <span class="legend-item" style="background-color: #22c55e; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SHAS</span>
-  </div>
-</div>
+    <!-- Legend -->
+    <div class="legend" style="margin: 20px 0;">
+      <h4>Department Colors:</h4>
+      <div class="legend-items">
+        <span class="legend-item" style="background-color: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SACE</span>
+        <span class="legend-item" style="background-color: #facc15; color: black; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SABH</span>
+        <span class="legend-item" style="background-color: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SECAP</span>
+        <span class="legend-item" style="background-color: #22c55e; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SHAS</span>
+      </div>
+    </div>
 
-<!-- Scrollable Table Container -->
-<div style="overflow-x: auto; overflow-y: auto; max-height: 700px; border: 1px solid #ddd;">
-  <table style="width: 100%; border-collapse: collapse; font-size: 11px; min-width: 3000px;">
-    <!-- ✅ Multi-day header with time slots -->
-    <thead style="position: sticky; top: 0; z-index: 10;">
-      <!-- Day names row -->
-      <tr style="background-color: #2c3e50;">
-        <th rowspan="2" style="padding: 12px 8px; color: white; text-align: center; width: 150px; border: 1px solid #445566; position: sticky; left: 0; background-color: #2c3e50; z-index: 11;">
-          PROGRAM - YEAR
-        </th>
-        <th *ngFor="let day of days; let dayIdx = index" 
-            [attr.colspan]="timeSlots.length"
-            style="padding: 12px 8px; color: white; text-align: center; border: 1px solid #445566; background-color: #34495e;">
-          {{ getDayName(day) }}
-        </th>
-      </tr>
-      
-      <!-- Time slots row -->
-      <tr style="background-color: #2c3e50;">
-        <ng-container *ngFor="let day of days">
-          <th *ngFor="let slot of timeSlots" 
-              style="padding: 8px 4px; color: white; text-align: center; min-width: 120px; max-width: 140px; border: 1px solid #445566; font-size: 10px;">
-            {{ slot }}
-          </th>
-        </ng-container>
-      </tr>
-    </thead>
-    
-    <!-- ✅ Data rows -->
-    <tbody>
-      <tr *ngFor="let mapping of getStudentMappingData(); let rowIndex = index" 
-          [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
+    <!-- Scrollable Table Container -->
+    <div style="overflow-x: auto; overflow-y: auto; max-height: 700px; border: 1px solid #ddd;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 11px; min-width: 3000px;">
+        <!-- ✅ Multi-day header with time slots -->
+        <thead style="position: sticky; top: 0; z-index: 10;">
+          <!-- Day names row -->
+          <tr style="background-color: #2c3e50;">
+            <th rowspan="2" style="padding: 12px 8px; color: white; text-align: center; width: 150px; border: 1px solid #445566; position: sticky; left: 0; background-color: #2c3e50; z-index: 11;">
+              PROGRAM - YEAR
+            </th>
+            <th *ngFor="let day of days; let dayIdx = index" 
+                [attr.colspan]="timeSlots.length"
+                style="padding: 12px 8px; color: white; text-align: center; border: 1px solid #445566; background-color: #34495e;">
+              {{ getDayName(day) }}
+            </th>
+          </tr>
+          
+          <!-- Time slots row -->
+          <tr style="background-color: #2c3e50;">
+            <ng-container *ngFor="let day of days">
+              <th *ngFor="let slot of timeSlots" 
+                  style="padding: 8px 4px; color: white; text-align: center; min-width: 120px; max-width: 140px; border: 1px solid #445566; font-size: 10px;">
+                {{ slot }}
+              </th>
+            </ng-container>
+          </tr>
+        </thead>
         
-        <!-- Program-Year (Sticky) -->
-        <td style="padding: 10px 8px; font-weight: 600; text-align: center; border: 1px solid #ddd; position: sticky; left: 0; z-index: 5; white-space: nowrap;"
-            [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
-          {{ mapping.courseYear }}
-        </td>
-        
-        <!-- Time slots for each day -->
-        <ng-container *ngFor="let day of days">
-          <td *ngFor="let slot of timeSlots" 
-              style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; min-width: 120px; max-width: 140px; font-size: 10px;"
-              [style.background-color]="getStudentMappingCell(mapping.course, mapping.year, day, slot)?.bgColor || 'white'">
+        <!-- ✅ Data rows -->
+        <tbody>
+          <tr *ngFor="let mapping of getStudentMappingData(); let rowIndex = index" 
+              [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
             
-            <div *ngIf="getStudentMappingCell(mapping.course, mapping.year, day, slot) as cellData">
-              <!-- Subject ID (bold) -->
-              <div style="font-weight: 700; font-size: 11px; color: #1a1a1a;">
-                {{ cellData.subjectId }}
-              </div>
-              
-              <!-- Code number (smaller) -->
-              <div style="font-size: 9px; color: #666; margin-top: 2px;">
-                {{ cellData.code }}
-              </div>
-            </div>
+            <!-- Program-Year (Sticky) -->
+            <td style="padding: 10px 8px; font-weight: 600; text-align: center; border: 1px solid #ddd; position: sticky; left: 0; z-index: 5; white-space: nowrap;"
+                [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
+              {{ mapping.courseYear }}
+            </td>
             
-            <!-- Empty cell -->
-            <span *ngIf="!getStudentMappingCell(mapping.course, mapping.year, day, slot)" 
-                  style="color: #ccc; font-size: 14px;">
-              —
-            </span>
-          </td>
-        </ng-container>
-      </tr>
-    </tbody>
-  </table>
-</div>
+            <!-- Time slots for each day -->
+            <ng-container *ngFor="let day of days">
+              <td *ngFor="let slot of timeSlots" 
+                  style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; min-width: 120px; max-width: 140px; font-size: 10px;"
+                  [style.background-color]="getStudentMappingCell(mapping.course, mapping.year, day, slot)?.bgColor || 'white'">
+                
+                <div *ngIf="getStudentMappingCell(mapping.course, mapping.year, day, slot) as cellData">
+                  <!-- Subject ID (bold) -->
+                  <div style="font-weight: 700; font-size: 11px; color: #1a1a1a;">
+                    {{ cellData.subjectId }}
+                  </div>
+                  
+                  <!-- Code number (smaller) -->
+                  <div style="font-size: 9px; color: #666; margin-top: 2px;">
+                    {{ cellData.code }}
+                  </div>
+                </div>
+                
+                <!-- Empty cell -->
+                <span *ngIf="!getStudentMappingCell(mapping.course, mapping.year, day, slot)" 
+                      style="color: #ccc; font-size: 14px;">
+                  —
+                </span>
+              </td>
+            </ng-container>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-<!-- Summary Stats -->
-<div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-top: 20px;">
-  <h4 style="color: #2e7d32; margin: 0 0 10px 0;">📊 Mapping Statistics</h4>
-  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-    <div>
-      <div style="font-size: 12px; color: #666;">Total Program-Years</div>
-      <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
-        {{ getStudentMappingData().length }}
-      </div>
-    </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Total Subjects</div>
-      <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
-        {{ generatedSchedule.length }}
-      </div>
-    </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Exam Days</div>
-      <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
-        {{ days.length }}
-      </div>
-    </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Time Slots per Day</div>
-      <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
-        {{ timeSlots.length }}
+    <!-- Summary Stats -->
+    <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-top: 20px;">
+      <h4 style="color: #2e7d32; margin: 0 0 10px 0;">📊 Mapping Statistics</h4>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+        <div>
+          <div style="font-size: 12px; color: #666;">Total Program-Years</div>
+          <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
+            {{ getStudentMappingData().length }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Total Subjects</div>
+          <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
+            {{ generatedSchedule.length }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Exam Days</div>
+          <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
+            {{ days.length }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Time Slots per Day</div>
+          <div style="font-size: 24px; font-weight: 600; color: #2e7d32;">
+            {{ timeSlots.length }}
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
-  </div>
-  <!-- ✅ STEP 2C: ROOM SCHEDULE GRID -->
+
+  <!-- ✅ STEP 2D: ROOM SCHEDULE GRID -->
   <div *ngIf="currentStep === 'roomgrid'" class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; background-color: #f8f9fa; border-bottom: 2px solid #dee2e6; margin-bottom: 20px;">
-      <h2 style="margin: 0; color: #2c3e50;">Room Schedule Grid - Color Coded by Department</h2>
+      <h2 style="margin: 0; color: #2c3e50;">📅 Room Schedule Grid - Color Coded by Department</h2>
     </div>
-<!-- Day Tabs -->
-<div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #dee2e6;">
-  <button 
-    *ngFor="let day of days; let i = index" 
-    class="tab" 
-    [class.active]="activeDay === day"
-    (click)="selectActiveDay(day)"
-    [style.background-color]="activeDay === day ? '#007bff' : '#f8f9fa'"
-    [style.color]="activeDay === day ? 'white' : '#495057'"
-    [style.border]="'none'"
-    [style.padding]="'12px 24px'"
-    [style.cursor]="'pointer'"
-    [style.border-radius]="'4px 4px 0 0'"
-    [style.font-weight]="activeDay === day ? '600' : '400'"
-    [style.transition]="'all 0.3s ease'">
-    {{ getDayName(day) }}
-  </button>
-</div>
 
-<!-- Action buttons -->
-<div style="display: flex; justify-content: space-between; padding: 15px; background: #f8f9fa; margin-bottom: 20px;">
-  <button 
-    (click)="goToStep('simpleschedule')"
-    style="padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
-    ⬅ Back to Complete List
-  </button>
-  <button 
-    (click)="downloadRoomGridExcel()"
-    style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-    📥 Download Excel
-  </button>
-</div>
+    <!-- Day Tabs -->
+    <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #dee2e6;">
+      <button 
+        *ngFor="let day of days; let i = index" 
+        class="tab" 
+        [class.active]="activeDay === day"
+        (click)="selectActiveDay(day)"
+        [style.background-color]="activeDay === day ? '#007bff' : '#f8f9fa'"
+        [style.color]="activeDay === day ? 'white' : '#495057'"
+        [style.border]="'none'"
+        [style.padding]="'12px 24px'"
+        [style.cursor]="'pointer'"
+        [style.border-radius]="'4px 4px 0 0'"
+        [style.font-weight]="activeDay === day ? '600' : '400'"
+        [style.transition]="'all 0.3s ease'">
+        {{ getDayName(day) }}
+      </button>
+    </div>
 
-<!-- Legend -->
-<div class="legend" style="margin: 20px 0;">
-  <h4>Department Colors:</h4>
-  <div class="legend-items">
-    <span class="legend-item" style="background-color: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SACE</span>
-    <span class="legend-item" style="background-color: #facc15; color: black; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SABH</span>
-    <span class="legend-item" style="background-color: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SECAP</span>
-    <span class="legend-item" style="background-color: #22c55e; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SHAS</span>
-  </div>
-</div>
+    <!-- Action buttons -->
+    <div style="display: flex; justify-content: space-between; padding: 15px; background: #f8f9fa; margin-bottom: 20px;">
+      <button 
+        (click)="goToStep('simpleschedule')"
+        style="padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        ⬅ Back to Complete List
+      </button>
+      <button 
+        (click)="downloadRoomGridExcel()"
+        style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        📥 Download Excel
+      </button>
+    </div>
 
-<!-- Room Grid Table -->
-<div style="overflow-x: auto; overflow-y: auto; max-height: 700px; border: 1px solid #ddd;">
-  <table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 2000px;">
-    <thead style="position: sticky; top: 0; background-color: #2c3e50; z-index: 10;">
-      <tr>
-        <th style="padding: 12px 8px; color: white; text-align: center; width: 100px; border: 1px solid #445566; position: sticky; left: 0; background-color: #2c3e50; z-index: 11;">
-          ROOM
-        </th>
-        <th *ngFor="let slot of timeSlots" 
-            style="padding: 12px 8px; color: white; text-align: center; min-width: 120px; border: 1px solid #445566;">
-          {{ slot }}
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let room of getRoomsForGrid(); let rowIndex = index" 
-          [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
-        
-        <!-- Room Name (Sticky) -->
-        <td style="padding: 10px 8px; font-weight: 600; text-align: center; border: 1px solid #ddd; position: sticky; left: 0; z-index: 5;"
-            [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
-          {{ room }}
-        </td>
-        
-        <!-- Time Slots -->
-        <td *ngFor="let slot of timeSlots" 
-            style="padding: 8px 4px; text-align: center; border: 1px solid #ddd; min-width: 120px; max-width: 150px;"
-            [style.background-color]="getRoomSlotData(room, slot, activeDay)?.bgColor || 'white'">
-          
-          <div *ngIf="getRoomSlotData(room, slot, activeDay) as slotData" 
-               style="display: flex; flex-direction: column; gap: 2px;">
+    <!-- Legend -->
+    <div class="legend" style="margin: 20px 0;">
+      <h4>Department Colors:</h4>
+      <div class="legend-items">
+        <span class="legend-item" style="background-color: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SACE</span>
+        <span class="legend-item" style="background-color: #facc15; color: black; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SABH</span>
+        <span class="legend-item" style="background-color: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SECAP</span>
+        <span class="legend-item" style="background-color: #22c55e; color: white; padding: 6px 12px; border-radius: 6px; margin-right: 10px;">SHAS</span>
+      </div>
+    </div>
+
+    <!-- Room Grid Table -->
+    <div style="overflow-x: auto; overflow-y: auto; max-height: 700px; border: 1px solid #ddd;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 2000px;">
+        <thead style="position: sticky; top: 0; background-color: #2c3e50; z-index: 10;">
+          <tr>
+            <th style="padding: 12px 8px; color: white; text-align: center; width: 100px; border: 1px solid #445566; position: sticky; left: 0; background-color: #2c3e50; z-index: 11;">
+              ROOM
+            </th>
+            <th *ngFor="let slot of timeSlots" 
+                style="padding: 12px 8px; color: white; text-align: center; min-width: 120px; border: 1px solid #445566;">
+              {{ slot }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let room of getRoomsForGrid(); let rowIndex = index" 
+              [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
             
-            <!-- Code Number -->
-            <div style="font-weight: 700; font-size: 14px; color: #1a1a1a;">
-              {{ slotData.code }}
-            </div>
+            <!-- Room Name (Sticky) -->
+            <td style="padding: 10px 8px; font-weight: 600; text-align: center; border: 1px solid #ddd; position: sticky; left: 0; z-index: 5;"
+                [style.background-color]="rowIndex % 2 === 0 ? '#f9f9f9' : '#ffffff'">
+              {{ room }}
+            </td>
             
-            <!-- Subject ID (smaller) -->
-            <div style="font-size: 10px; color: #444; font-weight: 500;">
-              {{ slotData.subjectId }}
-            </div>
-            
-            <!-- Course and Year (smaller) -->
-            <div style="font-size: 9px; color: #666;">
-              {{ slotData.course }} - Y{{ slotData.year }}
-            </div>
+            <!-- Time Slots -->
+            <td *ngFor="let slot of timeSlots" 
+                style="padding: 8px 4px; text-align: center; border: 1px solid #ddd; min-width: 120px; max-width: 150px;"
+                [style.background-color]="getRoomSlotData(room, slot, activeDay)?.bgColor || 'white'">
+              
+              <div *ngIf="getRoomSlotData(room, slot, activeDay) as slotData" 
+                   style="display: flex; flex-direction: column; gap: 2px;">
+                
+                <!-- Code Number -->
+                <div style="font-weight: 700; font-size: 14px; color: #1a1a1a;">
+                  {{ slotData.code }}
+                </div>
+                
+                <!-- Subject ID (smaller) -->
+                <div style="font-size: 10px; color: #444; font-weight: 500;">
+                  {{ slotData.subjectId }}
+                </div>
+                
+                <!-- Course and Year (smaller) -->
+                <div style="font-size: 9px; color: #666;">
+                  {{ slotData.course }} - Y{{ slotData.year }}
+                </div>
+              </div>
+              
+              <!-- Empty cell -->
+              <span *ngIf="!getRoomSlotData(room, slot, activeDay)" 
+                    style="color: #ccc; font-size: 18px;">
+                —
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary Stats -->
+    <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-top: 20px;">
+      <h4 style="color: #1565C0; margin: 0 0 10px 0;">📊 Grid Statistics for {{ activeDay }}</h4>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+        <div>
+          <div style="font-size: 12px; color: #666;">Total Rooms</div>
+          <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
+            {{ getRoomsForGrid().length }}
           </div>
-          
-          <!-- Empty cell -->
-          <span *ngIf="!getRoomSlotData(room, slot, activeDay)" 
-                style="color: #ccc; font-size: 18px;">
-            —
-          </span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Occupied Slots</div>
+          <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
+            {{ getOccupiedSlotsCount(activeDay) }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Total Slots</div>
+          <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
+            {{ getRoomsForGrid().length * timeSlots.length }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #666;">Utilization</div>
+          <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
+            {{ getUtilizationPercent(activeDay) }}%
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<!-- Summary Stats -->
-<div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-top: 20px;">
-  <h4 style="color: #1565C0; margin: 0 0 10px 0;">📊 Grid Statistics for {{ activeDay }}</h4>
-  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-    <div>
-      <div style="font-size: 12px; color: #666;">Total Rooms</div>
-      <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
-        {{ getRoomsForGrid().length }}
+  <!-- ✅ PROCTOR ASSIGNMENT VIEW -->
+  <div *ngIf="currentStep === 'proctor'" class="proctor-view">
+    
+    <!-- Header with Statistics -->
+    <div class="proctor-header">
+      <div class="header-content">
+        <h2>👥 Proctor Assignment</h2>
+        <p class="subtitle">Assign proctors to exam sessions with smart suggestions</p>
+      </div>
+      
+      <!-- Statistics Cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ totalExams }}</div>
+            <div class="stat-label">Total Exams</div>
+          </div>
+        </div>
+        
+        <div class="stat-card success">
+          <div class="stat-icon">✅</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ assignedExams }}</div>
+            <div class="stat-label">Assigned</div>
+          </div>
+        </div>
+        
+        <div class="stat-card warning" *ngIf="conflictExams > 0">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ conflictExams }}</div>
+            <div class="stat-label">Needs Attention</div>
+          </div>
+        </div>
+        
+        <div class="stat-card info">
+          <div class="stat-icon">👨‍🏫</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ totalProctors }}</div>
+            <div class="stat-label">Unique Proctors</div>
+          </div>
+        </div>
       </div>
     </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Occupied Slots</div>
-      <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
-        {{ getOccupiedSlotsCount(activeDay) }}
+
+    <!-- Actions Bar -->
+    <div class="actions-bar">
+      <div class="actions-left">
+        <!-- Back Button -->
+        <button class="btn btn-secondary" (click)="goToStep('simpleschedule')">
+          <span class="btn-icon">⬅</span>
+          Back
+        </button>
+        
+        <!-- Auto-Assign Button -->
+        <button class="btn btn-primary" (click)="autoAssignAllProctors()">
+          <span class="btn-icon">⚡</span>
+          Auto-Assign All
+        </button>
+        
+        <!-- Reset Button -->
+        <button class="btn btn-secondary" (click)="resetAllProctors()">
+          <span class="btn-icon">🔄</span>
+          Reset All
+        </button>
+        
+        <!-- Download Button -->
+        <button class="btn btn-success" (click)="downloadProctorAssignmentsCSV()">
+          <span class="btn-icon">📥</span>
+          Download CSV
+        </button>
+      </div>
+      
+      <div class="actions-right">
+        <!-- Smart Suggestions Toggle -->
+        <label class="toggle-label">
+          <input type="checkbox" [(ngModel)]="showProctorSuggestions" (change)="cdr.detectChanges()">
+          <span>💡 Smart Suggestions</span>
+        </label>
       </div>
     </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Total Slots</div>
-      <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
-        {{ getRoomsForGrid().length * timeSlots.length }}
+
+    <!-- Filters -->
+    <div class="filters-section">
+      <div class="filter-group">
+        <input 
+          type="text" 
+          class="filter-input"
+          placeholder="🔍 Search exams..."
+          [(ngModel)]="proctorSearchQuery"
+          (ngModelChange)="applyProctorFilters()">
       </div>
+      
+      <div class="filter-group">
+        <select 
+          class="filter-select"
+          [(ngModel)]="selectedProctorDept"
+          (change)="applyProctorFilters()">
+          <option value="">All Departments</option>
+          <option *ngFor="let dept of uniqueInstructorDepartments" [value]="dept">
+            {{ dept }}
+          </option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <select 
+          class="filter-select"
+          [(ngModel)]="selectedProctorSubject"
+          (change)="applyProctorFilters()">
+          <option value="">All Subjects</option>
+          <option *ngFor="let subject of uniqueSubjectsTaught" [value]="subject">
+            {{ subject }}
+          </option>
+        </select>
+      </div>
+      
+      <button class="btn btn-link" (click)="clearProctorFilters()">
+        Clear Filters
+      </button>
     </div>
-    <div>
-      <div style="font-size: 12px; color: #666;">Utilization</div>
-      <div style="font-size: 24px; font-weight: 600; color: #1565C0;">
-        {{ getUtilizationPercent(activeDay) }}%
+
+    <!-- Exam List -->
+    <div class="exams-list">
+      <div class="list-header">
+        <div class="col-code">Code</div>
+        <div class="col-subject">Subject</div>
+        <div class="col-course">Course</div>
+        <div class="col-schedule">Schedule</div>
+        <div class="col-instructor">Instructor</div>
+        <div class="col-proctor">Assigned Proctor</div>
+        <div class="col-status">Status</div>
+      </div>
+
+      <!-- Exam Rows -->
+      <div class="exam-row" 
+           *ngFor="let exam of filteredProctorListEnhanced; trackBy: trackByExamCode"
+           [class.has-conflict]="exam.HAS_CONFLICT">
+        
+        <!-- Code -->
+        <div class="col-code">
+          <span class="exam-code">{{ exam.CODE }}</span>
+        </div>
+
+        <!-- Subject -->
+        <div class="col-subject">
+          <div class="subject-info">
+            <div class="subject-id">{{ exam.SUBJECT_ID }}</div>
+            <div class="subject-title">{{ exam.DESCRIPTIVE_TITLE }}</div>
+          </div>
+        </div>
+
+        <!-- Course -->
+        <div class="col-course">
+          <span class="course-badge" [style.background]="getDeptGradient(exam.DEPT)">
+            {{ exam.COURSE }}
+          </span>
+          <span class="year-badge">Yr {{ exam.YEAR_LEVEL }}</span>
+        </div>
+
+        <!-- Schedule -->
+        <div class="col-schedule">
+          <div class="schedule-info">
+            <div class="schedule-day">{{ getDayName(exam.DAY) }}</div>
+            <div class="schedule-time">{{ formatTimeForDisplay(exam.SLOT) }}</div>
+            <div class="schedule-room">Room {{ exam.ROOM }}</div>
+          </div>
+        </div>
+
+        <!-- Instructor -->
+        <div class="col-instructor">
+          <div class="instructor-info">
+            <div class="instructor-name">{{ exam.INSTRUCTOR }}</div>
+            <div class="instructor-dept">{{ exam.DEPT }}</div>
+          </div>
+        </div>
+
+        <!-- Proctor Dropdown -->
+        <div class="col-proctor">
+          <div class="proctor-select-wrapper">
+            <!-- Smart Suggestions (if enabled) -->
+            <div *ngIf="showProctorSuggestions" class="proctor-suggestions">
+              <ng-container *ngIf="getSmartProctorSuggestions(exam) as suggestions">
+                <!-- Same Subject Matches -->
+                <div *ngIf="suggestions.sameSubject.length > 0" class="suggestion-group">
+                  <div class="suggestion-header">🎯 Same Subject</div>
+                  <button 
+                    *ngFor="let proctor of suggestions.sameSubject.slice(0, 3)"
+                    class="suggestion-btn same-subject"
+                    (click)="assignProctorSmart(exam, proctor)"
+                    [class.selected]="exam.PROCTOR === proctor">
+                    {{ proctor }}
+                  </button>
+                </div>
+
+                <!-- Same Department Matches -->
+                <div *ngIf="suggestions.sameDept.length > 0" class="suggestion-group">
+                  <div class="suggestion-header">🏛️ Same Dept</div>
+                  <button 
+                    *ngFor="let proctor of suggestions.sameDept.slice(0, 3)"
+                    class="suggestion-btn same-dept"
+                    (click)="assignProctorSmart(exam, proctor)"
+                    [class.selected]="exam.PROCTOR === proctor">
+                    {{ proctor }}
+                  </button>
+                </div>
+
+                <!-- Available -->
+                <div *ngIf="suggestions.available.length > 0 && suggestions.sameSubject.length === 0 && suggestions.sameDept.length === 0" class="suggestion-group">
+                  <div class="suggestion-header">✓ Available</div>
+                  <button 
+                    *ngFor="let proctor of suggestions.available.slice(0, 3)"
+                    class="suggestion-btn available"
+                    (click)="assignProctorSmart(exam, proctor)"
+                    [class.selected]="exam.PROCTOR === proctor">
+                    {{ proctor }}
+                  </button>
+                </div>
+              </ng-container>
+            </div>
+
+            <!-- Dropdown Fallback -->
+            <select 
+              class="proctor-select"
+              [(ngModel)]="exam.PROCTOR"
+              (change)="assignProctorSmart(exam, exam.PROCTOR)">
+              <option value="">Select Proctor...</option>
+              <option *ngFor="let proctor of getAllProctorsForDropdown(exam)" [value]="proctor">
+                {{ proctor }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="col-status">
+          <span class="status-badge" 
+                [class.success]="exam.PROCTOR && exam.PROCTOR !== 'TBD' && !exam.HAS_CONFLICT"
+                [class.warning]="exam.HAS_CONFLICT"
+                [class.pending]="!exam.PROCTOR || exam.PROCTOR === 'TBD'">
+            <span *ngIf="exam.PROCTOR && exam.PROCTOR !== 'TBD' && !exam.HAS_CONFLICT">
+              {{ getProctorMatchType(exam, exam.PROCTOR).icon }} {{ getProctorMatchType(exam, exam.PROCTOR).label }}
+            </span>
+            <span *ngIf="exam.HAS_CONFLICT">⚠️ Conflict</span>
+            <span *ngIf="!exam.PROCTOR || exam.PROCTOR === 'TBD'">⏳ Pending</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="filteredProctorListEnhanced.length === 0" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-text">No exams found</div>
+        <button class="btn btn-link" (click)="clearProctorFilters()">Clear Filters</button>
       </div>
     </div>
   </div>
-</div>
-  </div>
+
   <!-- STEP 3: COURSE SUMMARY (ORGANIZED BY YEAR LEVEL) -->
   <div *ngIf="currentStep === 'summary'" class="card">
     <div class="card-header">
@@ -828,59 +1106,61 @@
         ⬅ Back
       </button>
     </div>
-<div class="course-summary">
-  <div *ngFor="let c of courseSummary" class="course-section">
-    <h3 class="course-title">{{ c.course }}</h3>
-    
-    <!-- Loop through each year level group -->
-    <div *ngFor="let yearGroup of c.yearLevelGroups" class="year-level-section">
-      <div class="year-level-header">
-        <span class="year-level-badge-large">Year {{ yearGroup.yearLevel }}</span>
+
+    <div class="course-summary">
+      <div *ngFor="let c of courseSummary" class="course-section">
+        <h3 class="course-title">{{ c.course }}</h3>
+        
+        <!-- Loop through each year level group -->
+        <div *ngFor="let yearGroup of c.yearLevelGroups" class="year-level-section">
+          <div class="year-level-header">
+            <span class="year-level-badge-large">Year {{ yearGroup.yearLevel }}</span>
+          </div>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Time Slot</th>
+                <th>Subject ID</th>
+                <th>Title</th>
+                <th>Code</th>
+                <th>Room</th>
+                <th>Instructor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <ng-container *ngFor="let g of yearGroup.groups">
+                <tr *ngFor="let ex of g.exams; let eIdx = index">
+                  <td *ngIf="eIdx === 0" [attr.rowspan]="g.exams.length" class="group-cell">
+                    <strong>{{ g.day }}</strong>
+                  </td>
+                  <td *ngIf="eIdx === 0" [attr.rowspan]="g.exams.length" class="group-cell">
+                    {{ g.slot }}
+                  </td>
+                  <td>{{ ex.SUBJECT_ID }}</td>
+                  <td>{{ ex.DESCRIPTIVE_TITLE }}</td>
+                  <td>{{ ex.CODE }}</td>
+                  <td>{{ ex.ROOM }}</td>
+                  <td>{{ ex.INSTRUCTOR }}</td>
+                </tr>
+              </ng-container>
+            </tbody>
+          </table>
+        </div>
       </div>
-      
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Day</th>
-            <th>Time Slot</th>
-            <th>Subject ID</th>
-            <th>Title</th>
-            <th>Code</th>
-            <th>Room</th>
-            <th>Instructor</th>
-          </tr>
-        </thead>
-        <tbody>
-          <ng-container *ngFor="let g of yearGroup.groups">
-            <tr *ngFor="let ex of g.exams; let eIdx = index">
-              <td *ngIf="eIdx === 0" [attr.rowspan]="g.exams.length" class="group-cell">
-                <strong>{{ g.day }}</strong>
-              </td>
-              <td *ngIf="eIdx === 0" [attr.rowspan]="g.exams.length" class="group-cell">
-                {{ g.slot }}
-              </td>
-              <td>{{ ex.SUBJECT_ID }}</td>
-              <td>{{ ex.DESCRIPTIVE_TITLE }}</td>
-              <td>{{ ex.CODE }}</td>
-              <td>{{ ex.ROOM }}</td>
-              <td>{{ ex.INSTRUCTOR }}</td>
-            </tr>
-          </ng-container>
-        </tbody>
-      </table>
+    </div>
+
+    <div class="mt-3">
+      <button class="btn btn-primary" (click)="viewRoomTimeTable()">
+        View Room-Time Table
+      </button>
+      <button class="btn btn-outline" (click)="viewCourseGrid()">
+        View Course Grid
+      </button>
     </div>
   </div>
-</div>
 
-<div class="mt-3">
-  <button class="btn btn-primary" (click)="viewRoomTimeTable()">
-    View Room-Time Table
-  </button>
-  <button class="btn btn-outline" (click)="viewCourseGrid()">
-    View Course Grid
-  </button>
-</div>
-  </div>
   <!-- STEP 4: ROOM TIME TABLE (WITH YEAR LEVEL) -->
   <div *ngIf="currentStep === 'timetable'" class="card">
     <div class="card-header">
@@ -889,150 +1169,157 @@
         ⬅ Back
       </button>
     </div>
-<!-- Day Tabs -->
-<div class="tabs">
-  <button 
-    *ngFor="let day of roomTimeData.days; let i = index" 
-    class="tab" 
-    [class.active]="activeDay === day"
-    (click)="activeDay = day">
-    {{ day }}
-    <span *ngIf="examDates[days.indexOf(day)]" class="badge">
-      {{ examDates[days.indexOf(day)] | date: 'MM/dd' }}
-    </span>
-  </button>
-</div>
 
-<!-- Time Table Grid -->
-<div class="table-responsive">
-  <table class="timetable">
-    <thead>
-      <tr>
-        <th class="sticky-col">Room</th>
-        <th *ngFor="let slot of timeSlots">{{ slot }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let room of roomTimeData.rooms">
-        <td class="sticky-col room-label">
-          {{ room }}
-          <small *ngIf="roomCapacities.has(room)" style="display: block; color: #666; font-size: 10px;">
-            Cap: {{ roomCapacities.get(room) }}
-          </small>
-        </td>
-        <td *ngFor="let slot of timeSlots" 
-            [style.background-color]="
-roomTimeData.table[activeDay]
-&& roomTimeData.table[activeDay][room]
-&& roomTimeData.table[activeDay][room][slot]
-? getDeptColor(roomTimeData.table[activeDay][room][slot].dept)
-: 'transparent'">
-          <div *ngIf="
-roomTimeData.table[activeDay]
-&& roomTimeData.table[activeDay][room]
-&& roomTimeData.table[activeDay][room][slot]
-" class="cell-content">
-<strong>{{ roomTimeData.table[activeDay][room][slot].code }}</strong>
-<small>{{ roomTimeData.table[activeDay][room][slot].course }}</small>
-<span class="year-level-badge-small">Yr {{ roomTimeData.table[activeDay][room][slot].yearLevel }}</span>
-</div>
-<span *ngIf="!(
-roomTimeData.table[activeDay]
-&& roomTimeData.table[activeDay][room]
-&& roomTimeData.table[activeDay][room][slot]
-)" class="empty-cell">—</span>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<!-- Legend -->
-<div class="legend">
-  <h4>Department Colors:</h4>
-  <div class="legend-items">
-    <span class="legend-item" style="background-color: #ef4444;">SACE</span>
-    <span class="legend-item" style="background-color: #facc15; color: #000;">SABH</span>
-    <span class="legend-item" style="background-color: #3b82f6;">SECAP</span>
-    <span class="legend-item" style="background-color: #22c55e;">SHAS</span>
+    <!-- Day Tabs -->
+    <div class="tabs">
+      <button 
+        *ngFor="let day of roomTimeData.days; let i = index" 
+        class="tab" 
+        [class.active]="activeDay === day"
+        (click)="activeDay = day">
+        {{ day }}
+        <span *ngIf="examDates[days.indexOf(day)]" class="badge">
+          {{ examDates[days.indexOf(day)] | date: 'MM/dd' }}
+        </span>
+      </button>
+    </div>
+
+    <!-- Time Table Grid -->
+    <div class="table-responsive">
+      <table class="timetable">
+        <thead>
+          <tr>
+            <th class="sticky-col">Room</th>
+            <th *ngFor="let slot of timeSlots">{{ slot }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let room of roomTimeData.rooms">
+            <td class="sticky-col room-label">
+              {{ room }}
+              <small *ngIf="roomCapacities.has(room)" style="display: block; color: #666; font-size: 10px;">
+                Cap: {{ roomCapacities.get(room) }}
+              </small>
+            </td>
+            <td *ngFor="let slot of timeSlots" 
+                [style.background-color]="
+                  roomTimeData.table[activeDay]
+                  && roomTimeData.table[activeDay][room]
+                  && roomTimeData.table[activeDay][room][slot]
+                  ? getDeptColor(roomTimeData.table[activeDay][room][slot].dept)
+                  : 'transparent'">
+              <div *ngIf="
+                roomTimeData.table[activeDay]
+                && roomTimeData.table[activeDay][room]
+                && roomTimeData.table[activeDay][room][slot]
+              " class="cell-content">
+                <strong>{{ roomTimeData.table[activeDay][room][slot].code }}</strong>
+                <small>{{ roomTimeData.table[activeDay][room][slot].course }}</small>
+                <span class="year-level-badge-small">Yr {{ roomTimeData.table[activeDay][room][slot].yearLevel }}</span>
+              </div>
+              <span *ngIf="!(
+                roomTimeData.table[activeDay]
+                && roomTimeData.table[activeDay][room]
+                && roomTimeData.table[activeDay][room][slot]
+              )" class="empty-cell">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <h4>Department Colors:</h4>
+      <div class="legend-items">
+        <span class="legend-item" style="background-color: #ef4444;">SACE</span>
+        <span class="legend-item" style="background-color: #facc15; color: #000;">SABH</span>
+        <span class="legend-item" style="background-color: #3b82f6;">SECAP</span>
+        <span class="legend-item" style="background-color: #22c55e;">SHAS</span>
+      </div>
+    </div>
   </div>
-</div>
-  </div>
+
   <!-- STEP 5: COURSE GRID (WITH YEAR LEVEL) -->
   <div *ngIf="currentStep === 'coursegrid'" class="card">
     <div class="card-header">
       <h2>Step 5: Course Grid Editor</h2>
       <button class="btnback" (click)="goToStep('summary')">⬅ Back</button>
     </div>
-<div class="tabs">
-  <button 
-    *ngFor="let day of courseGridData.days"
-    class="tab"
-    [class.active]="activeDay === day"
-    (click)="activeDay = day">
-    {{ day }}
-    <span *ngIf="examDates[days.indexOf(day)]" class="badge">
-      {{ examDates[days.indexOf(day)] | date: 'MM/dd' }}
-    </span>
-  </button>
-</div>
 
-<div style="overflow-x: auto; max-height: 600px;">
-  <table style="min-width: 1200px; width: 100%;">
-    <thead style="position: sticky; top: 0; background: #2c3e50; z-index: 10;">
-      <tr>
-        <th class="sticky-col">Course</th>
-        <th *ngFor="let slot of timeSlots">{{ slot }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      <ng-container *ngFor="let course of courseGridData.courses">
-        <ng-container *ngFor="let year of [1,2,3,4]">
-          <!-- Only render row if there's at least one exam for this course & year -->
-          <tr *ngIf="hasExamsForYear(course, year, activeDay)">
-            <td class="sticky-col course-label">{{ course }} Yr {{ year }}</td>
-            <td *ngFor="let slot of timeSlots">
-              <ng-container *ngIf="courseGridData.grid 
-                                   && courseGridData.grid[activeDay] 
-                                   && courseGridData.grid[activeDay][course] 
-                                   && courseGridData.grid[activeDay][course][slot]?.length > 0">
-                <ng-container *ngFor="let exam of courseGridData.grid[activeDay][course][slot]">
-                  <div *ngIf="exam.yearLevel === year" class="exam-chip" [style.background-color]="getDeptColor(exam.dept)">
-                    <div class="chip-header">
-                      <strong>{{ exam.subjectId }}</strong>
-                      <span class="year-level-badge-chip">Yr {{ exam.yearLevel }}</span>
-                      <div class="chip-actions">
-                        <button class="btn-icon-sm" [title]="'Move ' + exam.title" (click)="showMoveOptions(getFullExam(exam, activeDay, slot), activeDay, slot)">📍</button>
-                        <button class="btn-icon-sm" [title]="'Remove ' + exam.title" (click)="removeExamByTitle(exam.title)">🗑️</button>
-                      </div>
-                    </div>
-                    <small class="room-info">Room: {{ exam.room }}</small>
-                  </div>
-                </ng-container>
-              </ng-container>
-              <ng-template #emptyCell>
-                <span class="empty-cell">—</span>
-              </ng-template>
-            </td>
+    <div class="tabs">
+      <button 
+        *ngFor="let day of courseGridData.days"
+        class="tab"
+        [class.active]="activeDay === day"
+        (click)="activeDay = day">
+        {{ day }}
+        <span *ngIf="examDates[days.indexOf(day)]" class="badge">
+          {{ examDates[days.indexOf(day)] | date: 'MM/dd' }}
+        </span>
+      </button>
+    </div>
+
+    <div style="overflow-x: auto; max-height: 600px;">
+      <table style="min-width: 1200px; width: 100%;">
+        <thead style="position: sticky; top: 0; background: #2c3e50; z-index: 10;">
+          <tr>
+            <th class="sticky-col">Course</th>
+            <th *ngFor="let slot of timeSlots">{{ slot }}</th>
           </tr>
-        </ng-container>
-      </ng-container>
-    </tbody>
-  </table>
-</div>
-
-<!-- MOVE EXAM POPUP -->
-<div *ngIf="movePopupVisible && moveExamData" class="move-popup">
-  <h3>Move Exam: {{ moveExamData.examRef?.DESCRIPTIVE_TITLE }}</h3>
-
-  <div *ngIf="safeSlots.length > 0; else noSlots">
-    <button *ngFor="let s of safeSlots" (click)="applyMove(s.day, s.slot)">
-      {{ s.day }} - {{ s.slot }}
-    </button>
+        </thead>
+        <tbody>
+          <ng-container *ngFor="let course of courseGridData.courses">
+            <ng-container *ngFor="let year of [1,2,3,4]">
+              <!-- Only render row if there's at least one exam for this course & year -->
+              <tr *ngIf="hasExamsForYear(course, year, activeDay)">
+                <td class="sticky-col course-label">{{ course }} Yr {{ year }}</td>
+                <td *ngFor="let slot of timeSlots">
+                  <ng-container *ngIf="courseGridData.grid 
+                                       && courseGridData.grid[activeDay] 
+                                       && courseGridData.grid[activeDay][course] 
+                                       && courseGridData.grid[activeDay][course][slot]?.length > 0">
+                    <ng-container *ngFor="let exam of courseGridData.grid[activeDay][course][slot]">
+                      <div *ngIf="exam.yearLevel === year" class="exam-chip" [style.background-color]="getDeptColor(exam.dept)">
+                        <div class="chip-header">
+                          <strong>{{ exam.subjectId }}</strong>
+                          <span class="year-level-badge-chip">Yr {{ exam.yearLevel }}</span>
+                          <div class="chip-actions">
+                            <button class="btn-icon-sm" [title]="'Move ' + exam.title" (click)="showMoveOptions(getFullExam(exam, activeDay, slot), activeDay, slot)">📍</button>
+                            <button class="btn-icon-sm" [title]="'Remove ' + exam.title" (click)="removeExamByTitle(exam.title)">🗑️</button>
+                          </div>
+                        </div>
+                        <small class="room-info">Room: {{ exam.room }}</small>
+                      </div>
+                    </ng-container>
+                  </ng-container>
+                  <ng-template #emptyCell>
+                    <span class="empty-cell">—</span>
+                  </ng-template>
+                </td>
+              </tr>
+            </ng-container>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <ng-template #noSlots>
-    <p>No safe slots available.</p>
-  </ng-template>
+  <!-- MOVE EXAM POPUP -->
+  <div *ngIf="movePopupVisible && moveExamData" class="move-popup">
+    <h3>Move Exam: {{ moveExamData.examRef?.DESCRIPTIVE_TITLE }}</h3>
 
-  <button (click)="closeMovePopup()">Cancel</button>
+    <div *ngIf="safeSlots.length > 0; else noSlots">
+      <button *ngFor="let s of safeSlots" (click)="applyMove(s.day, s.slot)">
+        {{ s.day }} - {{ s.slot }}
+      </button>
+    </div>
+
+    <ng-template #noSlots>
+      <p>No safe slots available.</p>
+    </ng-template>
+
+    <button (click)="closeMovePopup()">Cancel</button>
+  </div>
+
 </div>

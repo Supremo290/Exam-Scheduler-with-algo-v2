@@ -41,9 +41,11 @@ export interface ScheduledExam {
   PRIORITY?: number;
   IS_REGULAR?: boolean;
   LECTURE_ROOM?: string;
+  PROCTOR?: string;
+  HAS_CONFLICT?: boolean;
 }
 
-// ===== ILP Algorithm Interfaces =====
+
 export interface ConflictMatrix {
   [courseYear: string]: {
     [subjectId: string]: Set<string>;
@@ -59,7 +61,7 @@ export interface SubjectPriority {
   studentCount: number;
   conflicts: Set<string>;
   isRegular: boolean;
-  requiresAdjacent: boolean; // True if multiple sections need adjacent rooms
+  requiresAdjacent: boolean; 
 }
 
 export interface RoomPreference {
@@ -172,4 +174,42 @@ export interface DayLoadBalance {
   currentLoad: number;
   targetLoad: number;
   deficit: number;
+}
+
+
+export interface ProctorAssignment {
+  examCode: string;
+  originalInstructor: string;
+  assignedProctor: string;
+  hasConflict: boolean;
+  availableSubstitutes: string[];
+}
+
+export interface ProctorSuggestion {
+  sameSubject: string[];
+  sameDept: string[];
+  available: string[];
+}
+
+export interface ProctorMatchDetails {
+  matchesSubject: boolean;
+  matchesDept: boolean;
+  subjectsInCommon: string[];
+  proctorDept: string;
+}
+
+export interface ProctorMatchType {
+  type: 'same-subject' | 'same-dept' | 'available';
+  label: string;
+  icon: string;
+  details: string;
+}
+
+export interface ProctorStatistics {
+  total: number;
+  assigned: number;
+  conflicts: number;
+  sameSubject: number;
+  sameDept: number;
+  perfect: number;
 }

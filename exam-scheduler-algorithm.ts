@@ -1,8 +1,14 @@
 // ===================================================================
-// USL-ERP EXAM SCHEDULER - OPTIMIZED ALGORITHM V7.0
+// USL-ERP EXAM SCHEDULER - PRODUCTION READY V10.0
 // ===================================================================
-// Based on manual schedule analysis + Complete Requirements v2.0
-// IMPROVEMENTS: Better time slot utilization, room preferences, distribution
+// IMPROVEMENTS:
+// ✅ Building J completely excluded
+// ✅ Deterministic slot selection (no randomness)
+// ✅ Subject validation
+// ✅ Comprehensive statistics
+// ✅ Verification functions
+// ✅ Better ARCH handling (avoid 7:30 AM)
+// ✅ Optimized 6-unit subject placement
 // ===================================================================
 
 import { Exam, ScheduledExam, ConflictMatrix, SchedulingState } from '../subject-code';
@@ -41,49 +47,87 @@ const EXCLUDED_SUBJECT_IDS = new Set([
   'PNCM 1178', 'PNCM 1169', 'PNCM 10912', 'PNCM 1228'
 ]);
 
-// ✅ IMPROVED: Gen Ed Time Blocks WITHOUT capacity limits
-const GEN_ED_TIME_BLOCKS: { [key: string]: { day: number, slot: number }[] } = {
+// ✅ UPDATED: Gen Ed Time Blocks with realistic capacities
+const GEN_ED_TIME_BLOCKS: { 
+  [key: string]: { 
+    day: number; 
+    slot: number; 
+    capacity: number;
+  }[] 
+} = {
   'ETHC': [
-    { day: 0, slot: 0 }, // Day 1, 7:30-9:00 AM
-    { day: 0, slot: 1 }  // Fallback: Day 1, 9:00-10:30 AM
+    { day: 0, slot: 0, capacity: 14 }, // Day 1, 7:30-9:00 AM
+    { day: 0, slot: 1, capacity: 10 }, // Fallback
+    { day: 2, slot: 1, capacity: 10 }  // Extra fallback
   ],
   'ENGL': [
-    { day: 0, slot: 2 }, // Day 1, 10:30-12:00 PM
-    { day: 2, slot: 0 }, // Day 3, 7:30-9:00 AM
-    { day: 0, slot: 1 }  // Fallback: Day 1, 9:00-10:30 AM
+    { day: 0, slot: 2, capacity: 23 }, // Day 1, 10:30-12:00 PM
+    { day: 2, slot: 0, capacity: 34 }, // Day 3, 7:30-9:00 AM
+    { day: 0, slot: 1, capacity: 15 }, // Fallback
+    { day: 1, slot: 2, capacity: 10 }  // Extra fallback
   ],
   'PHED': [
-    { day: 0, slot: 3 }, // Day 1, 12:00-1:30 PM
-    { day: 1, slot: 0 }, // Day 2, 7:30-9:00 AM
-    { day: 2, slot: 3 }  // Fallback: Day 3, 12:00-1:30 PM
+    { day: 0, slot: 3, capacity: 27 }, // Day 1, 12:00-1:30 PM
+    { day: 1, slot: 0, capacity: 46 }, // Day 2, 7:30-9:00 AM
+    { day: 2, slot: 3, capacity: 20 }, // Fallback
+    { day: 0, slot: 2, capacity: 15 }  // Extra fallback
   ],
   'CFED': [
-    { day: 0, slot: 4 }, // Day 1, 1:30-3:00 PM (PRIMARY)
-    { day: 1, slot: 1 }, // Day 2, 9:00-10:30 AM
-    { day: 1, slot: 2 }, // Day 2, 10:30-12:00 PM
-    { day: 0, slot: 5 }, // Fallback: Day 1, 3:00-4:30 PM
-    { day: 1, slot: 4 }  // Fallback: Day 2, 1:30-3:00 PM
+    { day: 0, slot: 4, capacity: 46 }, // Day 1, 1:30-3:00 PM (PRIMARY)
+    { day: 1, slot: 1, capacity: 36 }, // Day 2, 9:00-10:30 AM
+    { day: 1, slot: 2, capacity: 44 }, // Day 2, 10:30-12:00 PM
+    { day: 0, slot: 5, capacity: 20 }, // Fallback
+    { day: 1, slot: 4, capacity: 15 }, // Fallback
+    { day: 2, slot: 4, capacity: 10 }  // Extra fallback
   ],
   'CONW': [
-    { day: 1, slot: 5 }, // Day 2, 3:00-4:30 PM
-    { day: 0, slot: 5 }, // Fallback: Day 1, 3:00-4:30 PM
-    { day: 2, slot: 5 }  // Fallback: Day 3, 3:00-4:30 PM
+    { day: 1, slot: 5, capacity: 33 }, // Day 2, 3:00-4:30 PM
+    { day: 0, slot: 5, capacity: 20 }, // Fallback
+    { day: 2, slot: 5, capacity: 15 }, // Fallback
+    { day: 1, slot: 4, capacity: 10 }  // Extra fallback
   ],
   'LANG': [
-    { day: 2, slot: 3 }, // Day 3, 12:00-1:30 PM
-    { day: 2, slot: 4 }, // Fallback: Day 3, 1:30-3:00 PM
-    { day: 1, slot: 3 }  // Fallback: Day 2, 12:00-1:30 PM
+    { day: 2, slot: 3, capacity: 15 }, // Day 3, 12:00-1:30 PM
+    { day: 2, slot: 4, capacity: 10 }, // Fallback
+    { day: 1, slot: 3, capacity: 10 }, // Fallback
+    { day: 0, slot: 3, capacity: 10 }  // Extra fallback
   ],
   'LITR': [
-    { day: 2, slot: 4 }, // Day 3, 1:30-3:00 PM
-    { day: 2, slot: 5 }, // Fallback: Day 3, 3:00-4:30 PM
-    { day: 0, slot: 4 }  // Fallback: Day 1, 1:30-3:00 PM
+    { day: 2, slot: 4, capacity: 9 },  // Day 3, 1:30-3:00 PM
+    { day: 2, slot: 5, capacity: 10 }, // Fallback
+    { day: 0, slot: 4, capacity: 10 }, // Fallback
+    { day: 1, slot: 5, capacity: 10 }  // Extra fallback
   ],
-  // Add MATH as Gen Ed when taken as Gen Ed
   'MATH': [
-    { day: 2, slot: 2 }, // Day 3, 10:30-12:00 PM
-    { day: 0, slot: 2 }, // Fallback: Day 1, 10:30-12:00 PM
-    { day: 1, slot: 2 }  // Fallback: Day 2, 10:30-12:00 PM
+    { day: 2, slot: 2, capacity: 20 }, // Day 3, 10:30-12:00 PM
+    { day: 0, slot: 2, capacity: 15 }, // Fallback
+    { day: 1, slot: 2, capacity: 15 }, // Fallback
+    { day: 2, slot: 1, capacity: 10 }  // Extra fallback
+  ],
+  'ICTE': [
+    { day: 1, slot: 1, capacity: 15 }, // Day 2, 9:00-10:30 AM
+    { day: 0, slot: 1, capacity: 10 }, // Fallback
+    { day: 2, slot: 1, capacity: 10 }  // Extra fallback
+  ],
+  'OMGT': [
+    { day: 1, slot: 5, capacity: 10 }, // Day 2, 3:00-4:30 PM
+    { day: 0, slot: 5, capacity: 10 }, // Fallback
+    { day: 2, slot: 5, capacity: 10 }  // Extra fallback
+  ],
+  'GGSR': [
+    { day: 1, slot: 2, capacity: 10 }, // Day 2, 10:30-12:00 PM
+    { day: 0, slot: 2, capacity: 10 }, // Fallback
+    { day: 2, slot: 2, capacity: 10 }  // Extra fallback
+  ],
+  'RZAL': [
+    { day: 1, slot: 4, capacity: 10 }, // Day 2, 1:30-3:00 PM
+    { day: 0, slot: 4, capacity: 10 }, // Fallback
+    { day: 2, slot: 4, capacity: 10 }  // Extra fallback
+  ],
+  'PDEV': [
+    { day: 1, slot: 4, capacity: 10 }, // Day 2, 1:30-3:00 PM
+    { day: 0, slot: 4, capacity: 10 }, // Fallback
+    { day: 2, slot: 4, capacity: 10 }  // Extra fallback
   ]
 };
 
@@ -169,13 +213,13 @@ function getBuildingFromRoom(room: string): string {
   return match ? match[1] : '';
 }
 
-// ✅ NEW: Get floor number from room
 function getFloorFromRoom(room: string): number {
   const match = room.match(/-([0-9])([0-9])/);
   if (!match) return 0;
   return parseInt(match[1], 10);
 }
 
+// ✅ UPDATED: Exclude Building J explicitly
 function getAvailableBuildings(dept: string, subjectId: string): string[] {
   if (isArchSubject(subjectId)) {
     return ['C', 'K'];
@@ -183,12 +227,12 @@ function getAvailableBuildings(dept: string, subjectId: string): string[] {
   
   const deptUpper = dept.toUpperCase();
   
-  if (deptUpper.includes('SECAP')) return ['A', 'B', 'J'];
+  if (deptUpper.includes('SECAP')) return ['A', 'B'];
   if (deptUpper.includes('SABH')) return ['A'];
   if (deptUpper.includes('SACE')) return ['N', 'K', 'C'];
-  if (deptUpper.includes('SHAS')) return ['L', 'M', 'N', 'K', 'J'];
+  if (deptUpper.includes('SHAS')) return ['L', 'M', 'N', 'K'];
   
-  return ['A', 'N', 'K', 'L', 'M', 'B', 'C', 'J'];
+  return ['A', 'N', 'K', 'L', 'M', 'B', 'C'];
 }
 
 function is6UnitSubject(exam: Exam): boolean {
@@ -240,6 +284,46 @@ function hasRequiredBreak(
   }
   
   return true;
+}
+
+// ✅ NEW: Deterministic slot preferences based on subject type
+function getPreferredSlotsForSubject(
+  exam: Exam,
+  phase: 'MATH_ARCH' | 'MAJOR' | 'INDIVIDUAL'
+): number[] {
+  if (phase === 'MATH_ARCH') {
+    // MATH and ARCH: Prefer 9:00 AM - 4:30 PM
+    // Avoid 7:30 AM (slot 0) and evening (slots 6-7)
+    if (isArchSubject(exam.subjectId)) {
+      // ARCH: Especially avoid 7:30 AM
+      return [1, 2, 3, 4, 5, 6, 0, 7];
+    }
+    // MATH: Prefer mid-morning to midday
+    return [1, 2, 3, 4, 5, 0, 6, 7];
+  }
+  
+  if (phase === 'MAJOR') {
+    // Major subjects: Prefer daytime, avoid evening
+    // Distribute across available slots
+    return [1, 2, 3, 4, 5, 0, 6, 7];
+  }
+  
+  if (phase === 'INDIVIDUAL') {
+    // Phase 4: Try all slots including evening
+    // But still prefer daytime
+    return [1, 2, 3, 4, 5, 0, 6, 7];
+  }
+  
+  // Default: All slots
+  return [0, 1, 2, 3, 4, 5, 6, 7];
+}
+
+// ✅ NEW: Optimized slot selection for 6-unit subjects
+function getPreferredSlotsFor6UnitSubject(): number[] {
+  // 6-unit subjects need 2 consecutive slots
+  // Prefer daytime: slots 1-5 (9:00 AM - 4:30 PM)
+  // Avoid starting at slot 7 (would end at 9:00 PM)
+  return [1, 2, 3, 4, 5, 0, 6]; // Exclude slot 7
 }
 
 // ===================================================================
@@ -341,27 +425,22 @@ function getAvailableRooms(
     return true;
   });
   
-  // ✅ IMPROVED: Sort by building preference AND floor preference
   return available.sort((a, b) => {
     const buildingA = getBuildingFromRoom(a);
     const buildingB = getBuildingFromRoom(b);
     
-    // ARCH subjects prefer Building C
     if (isArchSubject(exam.subjectId)) {
       if (buildingA === 'C' && buildingB !== 'C') return -1;
       if (buildingA !== 'C' && buildingB === 'C') return 1;
     }
     
-    // Prefer ground floor (floor 1) first
     const floorA = getFloorFromRoom(a);
     const floorB = getFloorFromRoom(b);
     
     if (floorA !== floorB) {
-      // Ground floor (1) comes first, then 2, 3, 4
       return floorA - floorB;
     }
     
-    // Within same floor, sort alphabetically
     return a.localeCompare(b);
   });
 }
@@ -531,7 +610,7 @@ function scheduleGenEdTimeBlocks(
   scheduled: Map<string, ScheduledExam>,
   numDays: number
 ): { scheduled: number, failed: Exam[] } {
-  console.log('\n📗 PHASE 1: Gen Ed Time Blocks...');
+  console.log('\n📗 PHASE 1: Gen Ed Time Blocks (WITH CAPACITY)...');
   
   let scheduledCount = 0;
   const failed: Exam[] = [];
@@ -550,10 +629,11 @@ function scheduleGenEdTimeBlocks(
     }
   });
   
+  const capacityUsage = new Map<string, number>();
+  
   genEdGroups.forEach((exams, genEdType) => {
     const timeBlocks = GEN_ED_TIME_BLOCKS[genEdType];
     if (!timeBlocks) {
-      // ✅ NEW: If no time block defined, try to schedule in any available slot
       console.log(`  ℹ️  ${genEdType}: No time block defined, will schedule in Phase 3`);
       failed.push(...exams);
       return;
@@ -564,19 +644,27 @@ function scheduleGenEdTimeBlocks(
     subjectGroups.forEach((group, subjectId) => {
       let placed = false;
       
-      // ✅ IMPROVED: Try ALL time blocks without capacity restriction
       for (const block of timeBlocks) {
         if (placed) break;
         
-        // ✅ NEW: Skip 7:30 AM for CFED (add penalty approach)
+        // ✅ CRITICAL RULE: CFED cannot be at 7:30 AM (slot 0)
         if (genEdType === 'CFED' && block.slot === 0) {
-          continue; // Skip 7:30 AM for CFED
+          continue;
+        }
+        
+        const blockKey = `${genEdType}-${block.day}-${block.slot}`;
+        const currentUsage = capacityUsage.get(blockKey) || 0;
+        
+        if (currentUsage + group.length > block.capacity) {
+          console.log(`  ⚠️  ${genEdType}: Day ${block.day + 1} ${TIME_SLOTS[block.slot]} full (${currentUsage}/${block.capacity})`);
+          continue;
         }
         
         if (tryScheduleGroup(group, block.day, block.slot, allRooms, state, conflictMatrix, scheduled)) {
           scheduledCount += group.length;
           placed = true;
-          console.log(`  ✅ ${genEdType}: ${subjectId} (${group.length} sections) → Day ${block.day + 1} ${TIME_SLOTS[block.slot]}`);
+          capacityUsage.set(blockKey, currentUsage + group.length);
+          console.log(`  ✅ ${genEdType}: ${subjectId} (${group.length} sections) → Day ${block.day + 1} ${TIME_SLOTS[block.slot]} [${currentUsage + group.length}/${block.capacity}]`);
         }
       }
       
@@ -615,9 +703,12 @@ function scheduleHighPriority(
   mathGroups.forEach((group, subjectId) => {
     let placed = false;
     
-    // ✅ IMPROVED: Try all days and slots systematically
+    // ✅ CHANGED: Use deterministic slot preferences
+    const preferredSlots = getPreferredSlotsForSubject(group[0], 'MATH_ARCH');
+    
     for (let day = 0; day < numDays && !placed; day++) {
-      for (let slot = 0; slot < TIME_SLOTS.length && !placed; slot++) {
+      for (const slot of preferredSlots) {
+        if (placed) break;
         if (tryScheduleGroup(group, day, slot, allRooms, state, conflictMatrix, scheduled)) {
           scheduledCount += group.length;
           placed = true;
@@ -636,12 +727,17 @@ function scheduleHighPriority(
   archGroups.forEach((group, subjectId) => {
     let placed = false;
     
+    // ✅ CHANGED: Use deterministic slot preferences (avoid 7:30 AM)
+    const preferredSlots = getPreferredSlotsForSubject(group[0], 'MATH_ARCH');
+    
     for (let day = 0; day < numDays && !placed; day++) {
-      for (let slot = 0; slot < TIME_SLOTS.length && !placed; slot++) {
+      for (const slot of preferredSlots) {
+        if (placed) break;
         if (tryScheduleGroup(group, day, slot, allRooms, state, conflictMatrix, scheduled)) {
           scheduledCount += group.length;
           placed = true;
-          console.log(`  ✅ ARCH: ${subjectId} (${group.length} sections) → Day ${day + 1} ${TIME_SLOTS[slot]} (Building C)`);
+          const building = getBuildingFromRoom(allRooms.find(r => getBuildingFromRoom(r) === 'C') || '');
+          console.log(`  ✅ ARCH: ${subjectId} (${group.length} sections) → Day ${day + 1} ${TIME_SLOTS[slot]} (Building C preferred)`);
         }
       }
     }
@@ -657,7 +753,7 @@ function scheduleHighPriority(
 }
 
 // ===================================================================
-// PHASE 3: MAJOR SUBJECTS (More Aggressive)
+// PHASE 3: MAJOR SUBJECTS
 // ===================================================================
 
 function scheduleMajorSubjects(
@@ -668,17 +764,15 @@ function scheduleMajorSubjects(
   scheduled: Map<string, ScheduledExam>,
   numDays: number
 ): { scheduled: number, failed: Exam[] } {
-  console.log('\n📘 PHASE 3: Major Subjects (Aggressive Mode)...');
+  console.log('\n📘 PHASE 3: Major Subjects...');
   
   let scheduledCount = 0;
   const failed: Exam[] = [];
   
   const subjectGroups = groupExamsBySubject(exams);
   
-  // ✅ IMPROVED: Track day load to balance distribution (target 35-36-28)
   const dayLoad: number[] = new Array(numDays).fill(0);
   
-  // Get current loads from already scheduled exams
   state.assignments.forEach((scheduledExamArray, key) => {
     const dayMatch = key.match(/Day (\d+)/);
     if (dayMatch) {
@@ -689,42 +783,54 @@ function scheduleMajorSubjects(
     }
   });
   
-  // Sort groups by size (larger first for better packing)
   const sortedGroups = Array.from(subjectGroups.entries())
-    .sort((a, b) => b[1].length - a[1].length);
+    .sort((a, b) => {
+      // ✅ NEW: Prioritize 6-unit subjects first
+      const a6Unit = a[1].some(e => is6UnitSubject(e));
+      const b6Unit = b[1].some(e => is6UnitSubject(e));
+      
+      if (a6Unit && !b6Unit) return -1;
+      if (!a6Unit && b6Unit) return 1;
+      
+      // Then by group size
+      return b[1].length - a[1].length;
+    });
   
   sortedGroups.forEach(([subjectId, group]) => {
     let placed = false;
     
-    // ✅ IMPROVED: Try days in strategic order (least loaded first, but prefer Day 1-2 over Day 3)
     const dayPreferences: { day: number, load: number, penalty: number }[] = [];
     for (let day = 0; day < numDays; day++) {
-      // Add penalty for Day 3 to prefer Days 1-2
-      const penalty = day === 2 ? 50 : 0;
+      const penalty = day === 2 ? 30 : 0;
       dayPreferences.push({ day, load: dayLoad[day], penalty });
     }
     
-    // Sort by (load + penalty) - will prefer Day 1-2 when loads are similar
     dayPreferences.sort((a, b) => (a.load + a.penalty) - (b.load + b.penalty));
     
-    // ✅ IMPROVED: Try ALL time slots systematically
+    // ✅ CHANGED: Use deterministic slot preferences
+    const is6Unit = group.some(e => is6UnitSubject(e));
+    const preferredSlots = is6Unit 
+      ? getPreferredSlotsFor6UnitSubject() 
+      : getPreferredSlotsForSubject(group[0], 'MAJOR');
+    
     for (const { day } of dayPreferences) {
       if (placed) break;
       
-      // Try all slots for this day
-      for (let slot = 0; slot < TIME_SLOTS.length && !placed; slot++) {
+      for (const slot of preferredSlots) {
+        if (placed) break;
         if (tryScheduleGroup(group, day, slot, allRooms, state, conflictMatrix, scheduled)) {
           scheduledCount += group.length;
           placed = true;
           dayLoad[day] += group.length;
-          console.log(`  ✅ ${subjectId} (${group.length} sections) → Day ${day + 1} ${TIME_SLOTS[slot]}`);
+          const unitLabel = is6Unit ? ' (6-unit)' : '';
+          console.log(`  ✅ ${subjectId} (${group.length} sections)${unitLabel} → Day ${day + 1} ${TIME_SLOTS[slot]}`);
         }
       }
     }
     
     if (!placed) {
       failed.push(...group);
-      console.log(`  ⚠️  ${subjectId} (${group.length} sections) - will retry individually in Phase 4`);
+      console.log(`  ⚠️  ${subjectId} (${group.length} sections) - will retry in Phase 4`);
     }
   });
   
@@ -734,7 +840,7 @@ function scheduleMajorSubjects(
 }
 
 // ===================================================================
-// PHASE 4: INDIVIDUAL SCHEDULING (Ultra Aggressive)
+// PHASE 4: INDIVIDUAL SCHEDULING
 // ===================================================================
 
 function scheduleIndividually(
@@ -745,11 +851,10 @@ function scheduleIndividually(
   scheduled: Map<string, ScheduledExam>,
   numDays: number
 ): number {
-  console.log('\n🔧 PHASE 4: Individual Scheduling (Ultra Aggressive Mode)...');
+  console.log('\n🔧 PHASE 4: Individual Scheduling (All Time Slots)...');
   
   let scheduledCount = 0;
   
-  // ✅ IMPROVED: Track day loads
   const dayLoad: number[] = new Array(numDays).fill(0);
   
   state.assignments.forEach((scheduledExamArray, key) => {
@@ -762,10 +867,16 @@ function scheduleIndividually(
     }
   });
   
-  exams.forEach(exam => {
+  // ✅ NEW: Sort exams with 6-unit subjects first
+  const sortedExams = exams.sort((a, b) => {
+    if (is6UnitSubject(a) && !is6UnitSubject(b)) return -1;
+    if (!is6UnitSubject(a) && is6UnitSubject(b)) return 1;
+    return 0;
+  });
+  
+  sortedExams.forEach(exam => {
     let placed = false;
     
-    // ✅ IMPROVED: Try days in order of least loaded (with Day 3 penalty)
     const dayPreferences: { day: number, load: number, penalty: number }[] = [];
     for (let day = 0; day < numDays; day++) {
       const penalty = day === 2 ? 30 : 0;
@@ -774,17 +885,23 @@ function scheduleIndividually(
     
     dayPreferences.sort((a, b) => (a.load + a.penalty) - (b.load + b.penalty));
     
+    // ✅ CHANGED: Use smart slot selection even in Phase 4
+    const is6Unit = is6UnitSubject(exam);
+    const preferredSlots = is6Unit 
+      ? getPreferredSlotsFor6UnitSubject() 
+      : getPreferredSlotsForSubject(exam, 'INDIVIDUAL');
+    
     for (const { day } of dayPreferences) {
       if (placed) break;
       
-      // ✅ IMPROVED: Try ALL slots including evening (18:00-19:30)
-      for (let slot = 0; slot < TIME_SLOTS.length && !placed; slot++) {
+      for (const slot of preferredSlots) {
+        if (placed) break;
         if (hasConflict(exam, day, slot, state, conflictMatrix)) continue;
         
-        const availableRooms = getAvailableRooms(exam, day, slot, allRooms, state, is6UnitSubject(exam));
+        const availableRooms = getAvailableRooms(exam, day, slot, allRooms, state, is6Unit);
         
         if (availableRooms.length > 0) {
-          if (is6UnitSubject(exam)) {
+          if (is6Unit) {
             if (schedule6UnitExam(exam, day, slot, availableRooms[0], state, scheduled)) {
               scheduledCount++;
               placed = true;
@@ -797,8 +914,7 @@ function scheduleIndividually(
             placed = true;
             dayLoad[day]++;
             
-            // Log only if it's an unusual time slot (early morning or evening)
-            if (slot === 0 || slot === 7) {
+            if (slot === 0 || slot >= 6) {
               console.log(`  ✅ ${exam.subjectId} → Day ${day + 1} ${TIME_SLOTS[slot]}`);
             }
           }
@@ -817,6 +933,162 @@ function scheduleIndividually(
 }
 
 // ===================================================================
+// VALIDATION & STATISTICS
+// ===================================================================
+
+// ✅ NEW: Validate no student conflicts
+// ===================================================================
+// VALIDATION & STATISTICS
+// ===================================================================
+
+// ✅ FIXED: Validate no student conflicts (removed optional chaining)
+function validateNoConflicts(
+  eligible: Exam[],
+  scheduled: ScheduledExam[]
+): { valid: boolean, conflicts: string[] } {
+  const courseYearSchedules = new Map<string, ScheduledExam[]>();
+  
+  scheduled.forEach(exam => {
+    const key = `${exam.COURSE}-${exam.YEAR_LEVEL}`;
+    if (!courseYearSchedules.has(key)) {
+      courseYearSchedules.set(key, []);
+    }
+    const schedules = courseYearSchedules.get(key);
+    if (schedules) {
+      schedules.push(exam);
+    }
+  });
+  
+  const conflicts: string[] = [];
+  courseYearSchedules.forEach((schedules, courseYear) => {
+    const timeSlots = new Map<string, ScheduledExam[]>();
+    
+    schedules.forEach(exam => {
+      const key = `${exam.DAY}-${exam.SLOT}`;
+      if (!timeSlots.has(key)) {
+        timeSlots.set(key, []);
+      }
+      const examsInSlot = timeSlots.get(key);
+      if (examsInSlot) {
+        examsInSlot.push(exam);
+      }
+    });
+    
+    timeSlots.forEach((exams, timeSlot) => {
+      if (exams.length > 1) {
+        const conflictMsg = `❌ CONFLICT for ${courseYear} at ${timeSlot}: ${exams.map(e => e.SUBJECT_ID).join(', ')}`;
+        conflicts.push(conflictMsg);
+      }
+    });
+  });
+  
+  return { valid: conflicts.length === 0, conflicts };
+}
+
+// ✅ NEW: Generate comprehensive statistics
+function generateScheduleStatistics(
+  scheduledArray: ScheduledExam[],
+  numDays: number
+): void {
+  console.log('\n📊 ======================== DETAILED STATISTICS ========================');
+  
+  // Day distribution
+  console.log('\n  Day Distribution:');
+  const dayDistribution = new Map<string, number>();
+  for (let d = 1; d <= numDays; d++) {
+    const dayKey = `Day ${d}`;
+    const count = scheduledArray.filter(s => s.DAY === dayKey).length;
+    dayDistribution.set(dayKey, count);
+    const percentage = ((count / scheduledArray.length) * 100).toFixed(1);
+    console.log(`    ${dayKey}: ${count} exams (${percentage}%)`);
+  }
+  
+  // Time slot distribution
+  console.log('\n  Time Slot Distribution:');
+  TIME_SLOTS.forEach((slot, index) => {
+    const count = scheduledArray.filter(s => s.SLOT === slot).length;
+    const percentage = ((count / scheduledArray.length) * 100).toFixed(1);
+    const bar = '█'.repeat(Math.floor(count / 10));
+    console.log(`    ${slot}: ${count.toString().padStart(3)} exams (${percentage.padStart(5)}%) ${bar}`);
+  });
+  
+  // Gen Ed distribution
+  console.log('\n  Gen Ed Distribution:');
+  const genEdTypes = ['ETHC', 'ENGL', 'PHED', 'CFED', 'CONW', 'LANG', 'LITR', 'ICTE', 'OMGT', 'GGSR', 'RZAL', 'PDEV'];
+  let genEdTotal = 0;
+  genEdTypes.forEach(type => {
+    const count = scheduledArray.filter(s => s.SUBJECT_ID.startsWith(type)).length;
+    if (count > 0) {
+      genEdTotal += count;
+      console.log(`    ${type.padEnd(6)}: ${count} sections`);
+    }
+  });
+  console.log(`    ${'TOTAL'.padEnd(6)}: ${genEdTotal} sections`);
+  
+  // Building usage
+  console.log('\n  Building Usage:');
+  const buildingUsage = new Map<string, number>();
+  scheduledArray.forEach(exam => {
+    const building = getBuildingFromRoom(exam.ROOM);
+    buildingUsage.set(building, (buildingUsage.get(building) || 0) + 1);
+  });
+  
+  Array.from(buildingUsage.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([building, count]) => {
+      const percentage = ((count / scheduledArray.length) * 100).toFixed(1);
+      console.log(`    Building ${building}: ${count} exams (${percentage}%)`);
+    });
+  
+  // ✅ Verify Building J not used
+  const buildingJCount = scheduledArray.filter(s => getBuildingFromRoom(s.ROOM) === 'J').length;
+  if (buildingJCount === 0) {
+    console.log(`    ✅ Building J: 0 exams (CORRECTLY EXCLUDED)`);
+  } else {
+    console.log(`    ⚠️  Building J: ${buildingJCount} exams (SHOULD BE 0!)`);
+  }
+  
+  // 6-unit subjects
+  const sixUnitCount = scheduledArray.filter(s => s.UNITS === 6).length;
+  console.log(`\n  6-Unit Subjects: ${sixUnitCount} sections`);
+  
+  // ARCH subjects in Building C
+  const archSubjects = scheduledArray.filter(s => isArchSubject(s.SUBJECT_ID));
+  const archInC = archSubjects.filter(s => getBuildingFromRoom(s.ROOM) === 'C').length;
+  const archInK = archSubjects.filter(s => getBuildingFromRoom(s.ROOM) === 'K').length;
+  console.log(`\n  ARCH Subjects:`);
+  console.log(`    Total: ${archSubjects.length} sections`);
+  console.log(`    Building C: ${archInC} sections`);
+  console.log(`    Building K: ${archInK} sections (fallback)`);
+  
+  console.log('========================================================================');
+}
+
+// Subject enrollment validation (removed optional chaining)
+function validateSubjectEnrollment(exams: Exam[]): void {
+  console.log('\n📋 Subject Enrollment by Program:');
+  const subjectsByProgram = new Map<string, Set<string>>();
+  
+  exams.forEach(exam => {
+    const programKey = `${exam.course}-${exam.yearLevel}`;
+    if (!subjectsByProgram.has(programKey)) {
+      subjectsByProgram.set(programKey, new Set());
+    }
+    const subjects = subjectsByProgram.get(programKey);
+    if (subjects) {
+      subjects.add(exam.subjectId);
+    }
+  });
+  
+  const sortedPrograms = Array.from(subjectsByProgram.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  
+  sortedPrograms.forEach(([program, subjects]) => {
+    console.log(`  ${program}: ${subjects.size} subjects`);
+  });
+}
+
+// ===================================================================
 // MAIN ALGORITHM ENTRY POINT
 // ===================================================================
 
@@ -825,10 +1097,22 @@ export function generateExamSchedule(
   rooms: string[],
   numDays: number
 ): ScheduledExam[] {
-  console.log('🚀 Starting Optimized Exam Scheduler Algorithm v7.0...');
+  console.log('🚀 Starting USL-ERP Exam Scheduler v10.0 (Production Ready)...');
   console.log(`  Total exams: ${exams.length}`);
-  console.log(`  Rooms: ${rooms.length}`);
-  console.log(`  Days: ${numDays}`);
+  console.log(`  Total rooms: ${rooms.length}`);
+  console.log(`  Exam days: ${numDays}`);
+  
+  // ✅ CRITICAL FIX: Exclude Building J rooms
+  const validRooms = rooms.filter(room => {
+    const building = getBuildingFromRoom(room);
+    if (building === 'J') {
+      console.log(`  ⛔ Excluding Building J room: ${room}`);
+      return false;
+    }
+    return true;
+  });
+  
+  console.log(`  Valid rooms (excluding J): ${validRooms.length}`);
   
   const state: SchedulingState = {
     assignments: new Map(),
@@ -852,7 +1136,10 @@ export function generateExamSchedule(
   console.log(`  Eligible: ${eligible.length}`);
   console.log(`  Filtered: ${exams.filter(e => e.dept.toUpperCase() === 'SAS').length} SAS, ${excludedCount} excluded subjects`);
   
-  console.log('📊 Building conflict matrix...');
+  // ✅ NEW: Validate subject enrollment
+  validateSubjectEnrollment(eligible);
+  
+  console.log('\n📊 Building conflict matrix...');
   const conflictMatrix = buildConflictMatrix(eligible);
   
   const genEds = eligible.filter(e => isGenEdSubject(e.subjectId));
@@ -872,12 +1159,13 @@ export function generateExamSchedule(
   
   let totalScheduled = 0;
   
-  const phase1 = scheduleGenEdTimeBlocks(genEds, rooms, state, conflictMatrix, scheduled, numDays);
+  // ✅ Use validRooms instead of rooms
+  const phase1 = scheduleGenEdTimeBlocks(genEds, validRooms, state, conflictMatrix, scheduled, numDays);
   totalScheduled += phase1.scheduled;
   
   const phase2 = scheduleHighPriority(
     [...mathSubjects, ...archSubjects],
-    rooms,
+    validRooms,
     state,
     conflictMatrix,
     scheduled,
@@ -885,11 +1173,11 @@ export function generateExamSchedule(
   );
   totalScheduled += phase2.scheduled;
   
-  const phase3 = scheduleMajorSubjects(majorSubjects, rooms, state, conflictMatrix, scheduled, numDays);
+  const phase3 = scheduleMajorSubjects(majorSubjects, validRooms, state, conflictMatrix, scheduled, numDays);
   totalScheduled += phase3.scheduled;
   
   const allFailed = [...phase1.failed, ...phase2.failed, ...phase3.failed];
-  const phase4Count = scheduleIndividually(allFailed, rooms, state, conflictMatrix, scheduled, numDays);
+  const phase4Count = scheduleIndividually(allFailed, validRooms, state, conflictMatrix, scheduled, numDays);
   totalScheduled += phase4Count;
   
   const scheduledArray = Array.from(scheduled.values());
@@ -903,9 +1191,25 @@ export function generateExamSchedule(
   console.log(`  ✅ 1.5-Hour Breaks: ENFORCED`);
   console.log(`  ✅ Same Subject Coordination: ENFORCED`);
   console.log(`  ✅ Zero Conflicts: ENFORCED`);
-  console.log(`  ✅ Gen Ed Time Blocks: IMPLEMENTED`);
-  console.log(`  ✅ All 8 Time Slots: UTILIZED`);
+  console.log(`  ✅ Gen Ed Time Blocks: WITH CAPACITY LIMITS`);
+  console.log(`  ✅ Building J: EXCLUDED`);
+  console.log(`  ✅ Deterministic Scheduling: NO RANDOMNESS`);
+  console.log(`  ✅ 6-Unit Priority: OPTIMIZED PLACEMENT`);
+  console.log(`  ✅ ARCH 7:30 AM: AVOIDED`);
   console.log('================================================================');
+  
+  // ✅ NEW: Validate no conflicts
+  console.log('\n🔍 Validating schedule...');
+  const validation = validateNoConflicts(eligible, scheduledArray);
+  if (validation.valid) {
+    console.log('  ✅ CONFLICT CHECK: PASSED (No student conflicts detected)');
+  } else {
+    console.error('  ❌ CONFLICT CHECK: FAILED');
+    validation.conflicts.forEach(conflict => console.error(`  ${conflict}`));
+  }
+  
+  // ✅ NEW: Generate detailed statistics
+  generateScheduleStatistics(scheduledArray, numDays);
   
   if (totalScheduled < eligible.length) {
     console.warn('\n⚠️  UNSCHEDULED EXAMS:');

@@ -18,11 +18,15 @@ import {
   SafeSlotOption, 
   ExamDay, 
   ExamGroup,
-  ConflictMatrix,
   SubjectPriority,
   RoomPreference,
   SchedulingState,
-  SlotOption
+  SlotOption,
+  ProctorAssignment,
+  ProctorSuggestion,
+  ProctorMatchType,
+  ProctorMatchDetails,
+  ProctorStatistics
 } from '../subject-code';
 
 @Component({
@@ -32,7 +36,7 @@ import {
 })
 export class ExamSchedulerComponent implements OnInit {
   // State management
- currentStep: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 'simpleschedule' | 'roomgrid' | 'studentmapping' = 'import';
+ currentStep: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 'simpleschedule' | 'roomgrid' | 'studentmapping' | 'proctor' = 'import';
  isLoadingApi: boolean = false;
   
   // Core data
@@ -88,9 +92,45 @@ export class ExamSchedulerComponent implements OnInit {
   selectedDay: string = 'ALL';
   searchTerm: string = ''; 
 
-
   private searchSubject = new Subject<string>();
   private filteredScheduleCache: ScheduledExam[] = [];
+
+
+  // Core proctor data
+  proctorAssignments: Map<string, ProctorAssignment> = new Map();
+  conflictingExams: ScheduledExam[] = [];
+  availableProctors: Map<string, string[]> = new Map();
+  
+  // Instructor metadata
+  instructorSchedule: Record<string, { day: string; slot: string }[]> = {};
+  instructorSubjects: Map<string, Set<string>> = new Map();
+  instructorDepartments: Map<string, string> = new Map();
+  
+  // Filtering
+  proctorSearchQuery: string = '';
+  selectedProctorDept: string = '';
+  selectedProctorSubject: string = '';
+  showProctorSuggestions: boolean = true;
+  
+  // Performance optimization
+  private proctorSuggestionsCache = new Map<string, ProctorSuggestion>();
+  private proctorSuggestionsMap = new Map<string, ProctorSuggestion>();
+  private allProctorsMap = new Map<string, string[]>();
+  private filteredProctorList: ScheduledExam[] = [];
+  private processingCancelled = false;
+  private filterDebounceTimer: any;
+  
+  // ===================================================================
+  // ✅ UNSCHEDULED EXAMS PROPERTIES
+  // ===================================================================
+  
+  unscheduledExams: Exam[] = [];
+  showUnscheduledPanel: boolean = false;
+  editingUnscheduledExam: Exam | null = null;
+  editFormData: any = null;
+
+
+
 
   constructor(
     public api: ApiService,
@@ -136,6 +176,18 @@ ngOnInit() {
     });
     
     this.cdr.detectChanges();
+
+
+   (window as any).debugSchedule = () => {
+    console.log('=== DEBUG INFO ===');
+    console.log('Current step:', this.currentStep);
+    console.log('Generated schedule length:', this.generatedSchedule ? this.generatedSchedule.length : 0);
+    console.log('First 3 exams:', this.generatedSchedule ? this.generatedSchedule.slice(0, 3) : []);
+    console.log('Days:', this.days);
+    console.log('Exam dates:', this.examDates);
+    console.log('==================');
+  };
+
   }
 
   // ===================================================================
@@ -408,6 +460,116 @@ deleteGroup(groupName: string) {
       this.global.swalSuccess(`Deleted "${groupName}".`);
     }
   }
+}
+
+  duplicateGroup(group: ExamGroup) {
+  // Open dialog to get new name and optionally new dates
+  Swal.fire({
+    title: 'Duplicate Exam Group',
+    html: `
+      <div style="text-align: left; padding: 15px;">
+        <p style="margin-bottom: 10px;"><strong>Source:</strong> ${group.name}</p>
+        <p style="margin-bottom: 15px; color: #6b7280;">Enter a new name for the duplicated exam group:</p>
+        <input id="duplicate-name" class="swal2-input" placeholder="e.g., ${group.name} - Copy" style="margin-top: 0;">
+        
+        <div style="margin-top: 20px;">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="copy-dates" checked style="margin-right: 8px;">
+            <span>Copy exam dates from original</span>
+          </label>
+        </div>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: '📋 Duplicate',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#3b82f6',
+    cancelButtonColor: '#6b7280',
+    preConfirm: () => {
+      const nameInput = document.getElementById('duplicate-name') as HTMLInputElement;
+      const copyDatesCheckbox = document.getElementById('copy-dates') as HTMLInputElement;
+      
+      const newName = nameInput.value.trim();
+      
+      if (!newName) {
+        Swal.showValidationMessage('Please enter a name');
+        return false;
+      }
+      
+      // Check if name already exists
+      const exists = this.savedExamGroups.some(g => 
+        g.name.toLowerCase() === newName.toLowerCase()
+      );
+      
+      if (exists) {
+        Swal.showValidationMessage('An exam group with this name already exists');
+        return false;
+      }
+      
+      return {
+        name: newName,
+        copyDates: copyDatesCheckbox.checked
+      };
+    }
+  }).then((result) => {
+    if (result.value) {
+      this.executeDuplication(group, result.value.name, result.value.copyDates);
+    }
+  });
+}
+
+private executeDuplication(sourceGroup: ExamGroup, newName: string, copyDates: boolean) {
+  // Create duplicated group
+  const duplicatedGroup: ExamGroup = {
+    name: newName,
+    termYear: sourceGroup.termYear,
+    days: copyDates 
+      ? sourceGroup.days.map(day => ({
+          date: day.date ? new Date(day.date) : null,
+          am: day.am,
+          pm: day.pm
+        }))
+      : sourceGroup.days.map(day => ({
+          date: null,
+          am: day.am,
+          pm: day.pm
+        }))
+  };
+  
+  // Add to saved groups
+  this.savedExamGroups.push(duplicatedGroup);
+  localStorage.setItem('examGroups', JSON.stringify(this.savedExamGroups));
+  
+  // Reload groups
+  this.loadSavedExamGroups();
+  
+  // Show success message
+  const message = copyDates 
+    ? `Duplicated "${sourceGroup.name}" as "${newName}" with same dates`
+    : `Duplicated "${sourceGroup.name}" as "${newName}" (dates need to be set)`;
+  
+  this.showToast('Success', message, 'success');
+  
+  // Ask if user wants to edit dates (if they didn't copy)
+  if (!copyDates) {
+    setTimeout(() => {
+      Swal.fire({
+        title: 'Set Exam Dates?',
+        text: `Would you like to set the exam dates for "${newName}" now?`,
+        type: 'question',
+        showCancelButton: true,
+        confirmButtonText: '📅 Set Dates',
+        cancelButtonText: 'Later',
+        confirmButtonColor: '#10b981'
+      }).then((response) => {
+        if (response.value) {
+          this.editGroup(duplicatedGroup);
+        }
+      });
+    }, 500);
+  }
+  
+  this.cdr.detectChanges();
 }
 
   // ===================================================================
@@ -857,6 +1019,17 @@ async generateExamSchedule() {
       'error'
     );
   }
+  this.detectUnscheduledExams();
+
+// ✅ Initialize default proctors for all exams
+this.generatedSchedule.forEach(exam => {
+  if (!exam.PROCTOR || exam.PROCTOR === '') {
+    exam.PROCTOR = exam.INSTRUCTOR; // Default to instructor
+  }
+  if (exam.HAS_CONFLICT === undefined) {
+    exam.HAS_CONFLICT = false;
+  }
+});
 }
 
   calculateScheduleStats(): any {
@@ -1598,17 +1771,45 @@ downloadRoomGridExcel() {
   return dept ? colors[dept.toUpperCase()] || '#6b7280' : '#6b7280';
 }
 
- goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 'simpleschedule' | 'roomgrid' | 'studentmapping'): void {
+goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 'simpleschedule' | 'roomgrid' | 'studentmapping' | 'proctor'): void {
   console.log('🔄 Navigating to step:', step);
-  this.currentStep = step;
   
-  // Reset active day when going to steps with day tabs
-  if (step === 'roomgrid' || step === 'timetable' || step === 'coursegrid') {
-    this.activeDay = this.days[0] || 'Day 1';
+  // Special handling for proctor view
+  if (step === 'proctor') {
+    this.viewProctorAssignments();
+    return;
   }
   
+  // ✅ FIX: Generate data for each view type
+  if (step === 'studentmapping') {
+    console.log('Generating student mapping data...');
+    this.getStudentMappingData();
+  } else if (step === 'roomgrid') {
+    console.log('Preparing room grid...');
+    this.activeDay = this.days[0] || 'Day 1';
+  } else if (step === 'coursegrid') {
+    console.log('Generating course grid data...');
+    this.generateCourseGridData();
+    this.activeDay = this.days[0] || 'Day 1';
+  } else if (step === 'timetable') {
+    console.log('Preparing timetable...');
+    this.activeDay = this.days[0] || 'Day 1';
+  } else if (step === 'simpleschedule') {
+    console.log('Preparing simple schedule...');
+    this.generateSimpleScheduleData();
+  }
+  
+  // Regular navigation
+  this.currentStep = step;
+  
+  // ✅ FIX: Multiple change detection cycles
   this.cdr.detectChanges();
+  setTimeout(() => {
+    this.cdr.detectChanges();
+  }, 50);
 }
+
+
   getTermYearLabel(termYearCode: string): string {
     if (!termYearCode) return 'Unknown';
     if (termYearCode.includes('Semester') || termYearCode.includes('Summer')) return termYearCode;
@@ -1856,20 +2057,16 @@ onFilterChange() {
   }
 
 getDayName(day: string): string {
-  console.log('🔍 Getting day name for:', day);
-  
   // Map Day 1, Day 2, Day 3 to actual exam dates
   const dayIndex = this.days.indexOf(day);
   
   if (dayIndex === -1 || dayIndex >= this.examDates.length) {
-    console.warn('⚠️ Invalid day:', day);
     return day;
   }
   
   const examDate = this.examDates[dayIndex];
   
   if (!examDate) {
-    console.warn('⚠️ No exam date for day:', day);
     return day;
   }
   
@@ -1887,10 +2084,7 @@ getDayName(day: string): string {
   });
   
   // Return format: "Monday, 01/27/2025"
-  const result = `${dayName}, ${formattedDate}`;
-  
-  console.log('✅ Converted', day, 'to:', result);
-  return result;
+  return `${dayName}, ${formattedDate}`;
 }
 
 
@@ -1922,6 +2116,20 @@ getExamDays(): { label: string, value: string }[] {
   return options;
 }
 
+getDeptGradient(dept: string): string {
+  const colors: { [key: string]: string } = {
+    'SACE': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    'SABH': 'linear-gradient(135deg, #facc15 0%, #eab308 100%)',
+    'SECAP': 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+    'SHAS': 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+    'SBCD': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+    'SED': 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
+    'SMATE': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+    'SNAMS': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
+  };
+  
+  return colors[dept] || 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+}
 
 downloadSimpleScheduleExcel() {
   const filtered = this.getFilteredSchedule();
@@ -2114,5 +2322,1141 @@ downloadStudentMappingExcel() {
   
   this.showToast('Success', 'Student mapping exported to Excel');
 }
+
+// ===================================================================
+// ✅ PROCTOR ASSIGNMENT METHODS - PART 1
+// Add these methods to your ExamSchedulerComponent class
+// ===================================================================
+
+initializeInstructorData() {
+  console.log('📚 Initializing instructor data...');
+  
+  this.instructorSubjects.clear();
+  this.instructorDepartments.clear();
+  
+  // Build instructor metadata from all exams
+  this.exams.forEach(exam => {
+    const instructor = exam.instructor ? exam.instructor.toUpperCase().trim() : "";
+    const subject = exam.subjectId ? exam.subjectId.toUpperCase().trim() : "";
+    const dept = exam.dept ? exam.dept.toUpperCase().trim() : "";
+    
+    if (instructor) {
+      // Track subjects taught by each instructor
+      if (!this.instructorSubjects.has(instructor)) {
+        this.instructorSubjects.set(instructor, new Set());
+      }
+      if (subject) {
+        this.instructorSubjects.get(instructor)!.add(subject);
+      }
+      
+      // Track instructor's department
+      if (dept && !this.instructorDepartments.has(instructor)) {
+        this.instructorDepartments.set(instructor, dept);
+      }
+    }
+  });
+  
+  console.log(`✅ Loaded ${this.instructorSubjects.size} instructors`);
+}
+
+// 2. Detect and resolve proctor conflicts
+detectAndResolveProctorConflicts() {
+  console.log('🔍 Detecting proctor conflicts...');
+  
+  const examsByDaySlot: { [key: string]: ScheduledExam[] } = {};
+  
+  // Group exams by day and time slot
+  this.generatedSchedule.forEach(exam => {
+    const key = `${exam.DAY}|${exam.SLOT}`;
+    if (!examsByDaySlot[key]) {
+      examsByDaySlot[key] = [];
+    }
+    examsByDaySlot[key].push(exam);
+  });
+
+  let totalConflicts = 0;
+
+  // Check each time slot for conflicts
+  Object.entries(examsByDaySlot).forEach(([key, examsInSlot]) => {
+    const proctorCount: { [proctor: string]: ScheduledExam[] } = {};
+    
+    // Group exams by proctor
+    examsInSlot.forEach(exam => {
+      const proctor = (exam.PROCTOR || exam.INSTRUCTOR || '').toUpperCase().trim();
+      if (proctor) {
+        if (!proctorCount[proctor]) {
+          proctorCount[proctor] = [];
+        }
+        proctorCount[proctor].push(exam);
+      }
+    });
+
+    // Resolve conflicts (proctor assigned to multiple exams)
+    Object.entries(proctorCount).forEach(([proctor, conflictedExams]) => {
+      if (conflictedExams.length > 1) {
+        console.log(`⚠️ Conflict: ${proctor} → ${conflictedExams.length} exams at ${key}`);
+        totalConflicts += conflictedExams.length - 1;
+        
+        // Prioritize instructor's own class
+        const ownClass = conflictedExams.find(e => 
+          e.INSTRUCTOR.toUpperCase().trim() === proctor
+        );
+        
+        if (ownClass) {
+          ownClass.PROCTOR = ownClass.INSTRUCTOR;
+          ownClass.HAS_CONFLICT = false;
+        }
+        
+        // Find substitutes for other exams
+        conflictedExams.forEach(exam => {
+          if (exam !== ownClass) {
+            const substitute = this.findSubstituteProctor(exam, key);
+            
+            if (substitute) {
+              exam.PROCTOR = substitute;
+              exam.HAS_CONFLICT = false;
+              console.log(`✅ Substitute: ${substitute} → ${exam.CODE}`);
+            } else {
+              exam.HAS_CONFLICT = true;
+              console.warn(`❌ No substitute for ${exam.CODE}`);
+            }
+          }
+        });
+      } else {
+        conflictedExams[0].HAS_CONFLICT = false;
+      }
+    });
+  });
+  
+  console.log(`Total conflicts resolved: ${totalConflicts}`);
+}
+
+// 3. Find substitute proctor for conflicted exam
+findSubstituteProctor(exam: ScheduledExam, daySlotKey: string): string | null {
+  const [day, slot] = daySlotKey.split('|');
+  
+  // Get all proctors already assigned in this slot
+  const takenProctors = new Set(
+    this.generatedSchedule
+      .filter(e => e.DAY === day && e.SLOT === slot && e.PROCTOR)
+      .map(e => e.PROCTOR ? e.PROCTOR.toUpperCase().trim() : '')
+  );
+
+  // Get all unique instructors
+  const allProctors = Array.from(new Set(
+    this.generatedSchedule.map(e => e.INSTRUCTOR.toUpperCase().trim())
+  ));
+  
+  // Find first available proctor
+  const substitute = allProctors.find(p => !takenProctors.has(p));
+  return substitute || null;
+}
+
+// 4. Pre-compute all proctor suggestions (with chunking)
+async precomputeAllProctorSuggestions() {
+  console.log('🔄 Pre-computing proctor suggestions...');
+  console.time('precompute-suggestions');
+  
+  this.proctorSuggestionsMap.clear();
+  this.allProctorsMap.clear();
+  this.processingCancelled = false;
+  
+  // Get all unique instructors
+  const allInstructors = Array.from(
+    new Set(
+      this.generatedSchedule
+        .map(e => e.INSTRUCTOR ? e.INSTRUCTOR.toUpperCase().trim() : "")
+        .filter(i => i)
+    )
+  );
+
+  const CHUNK_SIZE = 25; // Process 25 exams per chunk
+  const totalExams = this.generatedSchedule.length;
+  const chunks = Math.ceil(totalExams / CHUNK_SIZE);
+  
+  // Show progress dialog
+  Swal.fire({
+  title: ' Loading Proctor View',
+  html: `
+    <div style="text-align: center;">
+      <p>Processing exams...</p>
+      <div style="margin: 20px 0;">
+        <div style="background: #e5e7eb; height: 20px; border-radius: 10px; overflow: hidden;">
+        </div>
+      </div>
+    </div>
+  `,
+  allowOutsideClick: false,
+  showConfirmButton: false,
+  onOpen: () => {
+    Swal.showLoading();
+  }
+});
+  
+  // Process in chunks with async breaks
+  for (let chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
+    if (this.processingCancelled) {
+      console.log('Processing cancelled');
+      break;
+    }
+    
+    const start = chunkIndex * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, totalExams);
+    const chunk = this.generatedSchedule.slice(start, end);
+    
+    // Process chunk synchronously (fast)
+    this.processProctorChunk(chunk, allInstructors);
+    
+    // Update progress bar
+    const progress = Math.round((end / totalExams) * 100);
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    if (progressBar) progressBar.style.width = `${progress}%`;
+    if (progressText) progressText.textContent = `${end} / ${totalExams} exams`;
+    
+    // Allow UI to update (real async break)
+    if (chunkIndex < chunks - 1) {
+      await this.sleep(10); // 10ms break between chunks
+    }
+  }
+  
+  Swal.close();
+  console.timeEnd('precompute-suggestions');
+  console.log(`✅ Pre-computed suggestions for ${this.proctorSuggestionsMap.size} exams`);
+}
+
+// 5. Process a chunk of exams (helper for precompute)
+private processProctorChunk(chunk: ScheduledExam[], allInstructors: string[]) {
+  chunk.forEach(exam => {
+    const key = exam.CODE;
+    const examSubject = exam.SUBJECT_ID ? exam.SUBJECT_ID.toUpperCase().trim() : "";
+    const examDept = exam.DEPT ? exam.DEPT.toUpperCase().trim() : "";
+    const currentProctor = exam.PROCTOR ? exam.PROCTOR.toUpperCase().trim() : "";
+
+    const sameSubject: string[] = [];
+    const sameDept: string[] = [];
+    const available: string[] = [];
+    const allAvailable: string[] = [];
+    
+    // Pre-filter busy proctors for this slot
+    const busyProctors = new Set<string>();
+    this.generatedSchedule.forEach(e => {
+      if (e !== exam && 
+          e.DAY === exam.DAY && 
+          e.SLOT === exam.SLOT && 
+          e.PROCTOR) {
+        const p = e.PROCTOR.toUpperCase().trim();
+        if (p !== currentProctor) {
+          busyProctors.add(p);
+        }
+      }
+    });
+    
+    // Categorize available instructors
+    allInstructors.forEach(instructor => {
+      if (busyProctors.has(instructor)) return;
+      
+      allAvailable.push(instructor);
+      
+      const instructorDept = this.instructorDepartments.get(instructor) || '';
+      const instructorSubjects = this.instructorSubjects.get(instructor) || new Set();
+      
+      if (examSubject && instructorSubjects.has(examSubject)) {
+        sameSubject.push(instructor);
+      } else if (examDept && instructorDept === examDept) {
+        sameDept.push(instructor);
+      } else {
+        available.push(instructor);
+      }
+    });
+    
+    // Store results
+    this.proctorSuggestionsMap.set(key, {
+      sameSubject: sameSubject.sort(),
+      sameDept: sameDept.sort(),
+      available: available.sort()
+    });
+    
+    this.allProctorsMap.set(key, 
+      allAvailable.length > 0 ? allAvailable.sort() : ['No available instructor']
+    );
+  });
+}
+
+// 6. Helper: Sleep for async processing
+private sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+// 7. Get smart proctor suggestions (cached)
+getSmartProctorSuggestions(exam: ScheduledExam): ProctorSuggestion {
+  const cached = this.proctorSuggestionsMap.get(exam.CODE);
+  return cached || { sameSubject: [], sameDept: [], available: [] };
+}
+
+// 8. Get all available proctors for dropdown (cached)
+getAllProctorsForDropdown(exam: ScheduledExam): string[] {
+  const cached = this.allProctorsMap.get(exam.CODE);
+  return cached || ['No available instructor'];
+}
+
+// 9. Get match type for proctor (with icon)
+getProctorMatchType(exam: ScheduledExam, proctor: string): ProctorMatchType {
+  const details = this.getProctorMatchDetails(exam, proctor);
+  
+  if (details.matchesSubject && details.matchesDept) {
+    return { 
+      type: 'same-subject', 
+      label: 'Perfect Match', 
+      icon: '🎯',
+      details: `Same subject (${exam.SUBJECT_ID}) & dept (${exam.DEPT})`
+    };
+  } else if (details.matchesSubject) {
+    return { 
+      type: 'same-subject', 
+      label: 'Same Subject', 
+      icon: '🎯',
+      details: `Teaches ${exam.SUBJECT_ID}`
+    };
+  } else if (details.matchesDept) {
+    return { 
+      type: 'same-dept', 
+      label: 'Same Dept', 
+      icon: '🏛️',
+      details: `${details.proctorDept} department`
+    };
+  } else {
+    return { 
+      type: 'available', 
+      label: 'Available', 
+      icon: '✓',
+      details: `From ${details.proctorDept} dept`
+    };
+  }
+}
+
+// 10. Get proctor match details
+getProctorMatchDetails(exam: ScheduledExam, proctor: string): ProctorMatchDetails {
+  const proctorUpper = proctor.toUpperCase().trim();
+  const examSubject = exam.SUBJECT_ID ? exam.SUBJECT_ID.toUpperCase().trim() : "";
+  const examDept = exam.DEPT ? exam.DEPT.toUpperCase().trim() : "";
+  
+  const proctorSubjects = this.instructorSubjects.get(proctorUpper) || new Set();
+  const proctorDept = this.instructorDepartments.get(proctorUpper) || 'Unknown';
+  
+  const matchesSubject = examSubject && proctorSubjects.has(examSubject);
+  const matchesDept = examDept && proctorDept.toUpperCase() === examDept;
+  
+  const subjectsInCommon: string[] = [];
+  if (proctorSubjects.size > 0) {
+    proctorSubjects.forEach(subject => {
+      subjectsInCommon.push(subject);
+    });
+  }
+  
+  return {
+    matchesSubject,
+    matchesDept,
+    subjectsInCommon: subjectsInCommon.sort(),
+    proctorDept
+  };
+}
+
+// 11. Assign proctor to exam
+assignProctorSmart(exam: ScheduledExam, proctor: string) {
+  if (!proctor || proctor === 'No available instructor' || proctor === '') {
+    this.showToast('Error', 'Please select a valid proctor', 'destructive');
+    return;
+  }
+  
+  const previousProctor = exam.PROCTOR;
+  const proctorUpper = proctor.toUpperCase().trim();
+  
+  // Check for conflicts
+  const conflict = this.generatedSchedule.find(e =>
+    e !== exam &&
+    e.DAY === exam.DAY &&
+    e.SLOT === exam.SLOT &&
+    e.PROCTOR &&
+    e.PROCTOR.toUpperCase().trim() === proctorUpper
+  );
+  
+  if (conflict) {
+    Swal.fire({
+      title: 'Conflict Warning',
+      type: 'warning',
+      html: `
+        <div style="text-align: left; padding: 15px;">
+          <p style="margin-bottom: 15px;"><strong>${proctor}</strong> is already proctoring:</p>
+          <div style="background: #fee2e2; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">
+            <p style="margin: 0;"><strong>${conflict.CODE}</strong> - ${conflict.DESCRIPTIVE_TITLE}</p>
+            <p style="margin: 8px 0 0 0; font-size: 14px; color: #6b7280;">
+              ${conflict.COURSE} | Room ${conflict.ROOM}
+            </p>
+          </div>
+          <p style="margin-top: 15px; color: #ef4444; font-weight: 600;">Assign anyway?</p>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Yes, assign anyway',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#ef4444'
+    }).then((result) => {
+      if (result.value) {
+        this.executeProctorAssignmentWithoutSave(exam, proctor); // ✅ CHANGED: No auto-save
+      } else {
+        exam.PROCTOR = previousProctor;
+        this.cdr.detectChanges();
+      }
+    });
+  } else {
+    this.executeProctorAssignmentWithoutSave(exam, proctor); // ✅ CHANGED: No auto-save
+  }
+}
+
+
+// ✅ NEW: Execute proctor assignment WITHOUT auto-save
+private executeProctorAssignmentWithoutSave(exam: ScheduledExam, proctor: string) {
+  exam.PROCTOR = proctor;
+  exam.HAS_CONFLICT = false;
+  
+  // Only update suggestions for affected time slot (much faster)
+  this.updateSuggestionsForTimeSlot(exam.DAY, exam.SLOT);
+  
+  const proctorSubjects = this.getInstructorSubjects(proctor);
+  const examSubject = exam.SUBJECT_ID || '';
+  
+  let matchIcon = '✓';
+  if (proctorSubjects.includes(examSubject)) {
+    matchIcon = '🎯';
+  } else if (this.getInstructorDepartment(proctor) === exam.DEPT) {
+    matchIcon = '🏛️';
+  }
+  
+  this.showToast('Proctor Assigned', `${matchIcon} ${proctor} → ${exam.CODE}`, 'success');
+  // ✅ REMOVED: this.saveCurrentSchedule(); - No auto-save!
+  this.cdr.detectChanges();
+}
+
+// 12. Execute proctor assignment (helper)
+private executeProctorAssignment(exam: ScheduledExam, proctor: string) {
+  exam.PROCTOR = proctor;
+  exam.HAS_CONFLICT = false;
+  
+  // Only update suggestions for affected time slot (much faster)
+  this.updateSuggestionsForTimeSlot(exam.DAY, exam.SLOT);
+  
+  const proctorSubjects = this.getInstructorSubjects(proctor);
+  const examSubject = exam.SUBJECT_ID || '';
+  
+  let matchIcon = '✓';
+  if (proctorSubjects.includes(examSubject)) {
+    matchIcon = '🎯';
+  } else if (this.getInstructorDepartment(proctor) === exam.DEPT) {
+    matchIcon = '🏛️';
+  }
+  
+  this.showToast('Proctor Assigned', `${matchIcon} ${proctor} → ${exam.CODE}`, 'success');
+  this.saveCurrentSchedule(); // Auto-save
+  this.cdr.detectChanges();
+}
+
+// 13. Update suggestions for specific time slot (optimized)
+private updateSuggestionsForTimeSlot(day: string, slot: string) {
+  const affectedExams = this.generatedSchedule.filter(e => 
+    e.DAY === day && e.SLOT === slot
+  );
+  
+  const allInstructors = Array.from(
+    new Set(
+      this.generatedSchedule
+        .map(e => e.INSTRUCTOR ? e.INSTRUCTOR.toUpperCase().trim() : "")
+        .filter(i => i)
+    )
+  );
+
+  // Process affected exams only
+  this.processProctorChunk(affectedExams, allInstructors);
+}
+
+// 14. Auto-assign all proctors intelligently
+async autoAssignAllProctors() {
+  console.log('=== Auto-Assigning All Proctors ===');
+  
+  if (!this.generatedSchedule || this.generatedSchedule.length === 0) {
+    this.showToast('Error', 'No exams to assign', 'destructive');
+    return;
+  }
+
+  if (!this.instructorSubjects || this.instructorSubjects.size === 0) {
+    this.initializeInstructorData();
+  }
+
+  Swal.fire({
+    title: '⚡ Auto-Assigning Proctors',
+    text: 'Please wait...',
+    allowOutsideClick: false,
+    backdrop: true, // ✅ ADD: Dark background
+    onOpen: () => {
+      Swal.showLoading();
+    }
+  });
+
+  await this.sleep(100);
+
+  let stats: ProctorStatistics = {
+    total: this.generatedSchedule.length,
+    assigned: 0,
+    conflicts: 0,
+    sameSubject: 0,
+    sameDept: 0,
+    perfect: 0
+  };
+  
+  // Reset all proctors
+  this.generatedSchedule.forEach(exam => {
+    exam.PROCTOR = '';
+    exam.HAS_CONFLICT = false;
+  });
+
+  // Group by day+slot
+  const examsBySlot: { [key: string]: ScheduledExam[] } = {};
+  this.generatedSchedule.forEach(exam => {
+    const key = `${exam.DAY}|${exam.SLOT}`;
+    if (!examsBySlot[key]) examsBySlot[key] = [];
+    examsBySlot[key].push(exam);
+  });
+
+  const allInstructors = Array.from(
+    new Set(
+      this.generatedSchedule
+        .map(e => e.INSTRUCTOR ? e.INSTRUCTOR.toUpperCase().trim() : "")
+        .filter(i => i)
+    )
+  );
+
+  // Process each time slot
+  Object.values(examsBySlot).forEach(examsInSlot => {
+    const busyProctors = new Set<string>();
+
+    examsInSlot.forEach(exam => {
+      const examSubject = exam.SUBJECT_ID ? exam.SUBJECT_ID.toUpperCase().trim() : "";
+      const examDept = exam.DEPT ? exam.DEPT.toUpperCase().trim() : "";
+      const instructorUpper = exam.INSTRUCTOR ? exam.INSTRUCTOR.toUpperCase().trim() : "";
+
+      // Prioritize instructor's own class
+      if (!busyProctors.has(instructorUpper)) {
+        exam.PROCTOR = exam.INSTRUCTOR;
+        busyProctors.add(instructorUpper);
+        stats.assigned++;
+        stats.perfect++;
+        return;
+      }
+
+      // Find best substitute
+      let bestProctor = null;
+      let matchType = '';
+      
+      for (const instructor of allInstructors) {
+        if (busyProctors.has(instructor)) continue;
+        
+        const instructorDept = this.instructorDepartments.get(instructor) || '';
+        const instructorSubjects = this.instructorSubjects.get(instructor) || new Set();
+        
+        // Perfect match: same subject + same dept
+        if (examSubject && instructorSubjects.has(examSubject) && instructorDept === examDept) {
+          bestProctor = instructor;
+          matchType = 'perfect';
+          break;
+        }
+        
+        // Good match: same subject
+        if (!bestProctor && examSubject && instructorSubjects.has(examSubject)) {
+          bestProctor = instructor;
+          matchType = 'subject';
+        }
+        
+        // OK match: same dept
+        if (!bestProctor && examDept && instructorDept === examDept) {
+          bestProctor = instructor;
+          matchType = 'dept';
+        }
+        
+        // Fallback: any available
+        if (!bestProctor) {
+          bestProctor = instructor;
+          matchType = 'available';
+        }
+      }
+      
+      if (bestProctor) {
+        exam.PROCTOR = bestProctor;
+        busyProctors.add(bestProctor.toUpperCase().trim());
+        stats.assigned++;
+        if (matchType === 'perfect') stats.perfect++;
+        else if (matchType === 'subject') stats.sameSubject++;
+        else if (matchType === 'dept') stats.sameDept++;
+      } else {
+        exam.PROCTOR = 'TBD';
+        exam.HAS_CONFLICT = true;
+        stats.conflicts++;
+      }
+    });
+  });
+
+  // Refresh suggestions
+  await this.precomputeAllProctorSuggestions();
+  this.computeFilteredProctorList();
+
+  Swal.close();
+
+  // ✅ FIXED: Show correct success message
+  const message = `
+    <div style="text-align: left; padding: 10px;">
+      <p><strong>✅ Auto-Assignment Complete!</strong></p>
+      <ul style="margin: 10px 0; padding-left: 20px;">
+        <li>Total Assigned: <strong>${stats.assigned}</strong> / ${stats.total}</li>
+        <li>🎯 Perfect Match: <strong>${stats.perfect}</strong></li>
+        <li>📚 Same Subject: <strong>${stats.sameSubject}</strong></li>
+        <li>🏛️ Same Dept: <strong>${stats.sameDept}</strong></li>
+        ${stats.conflicts > 0 ? `<li>⚠️ Needs Manual: <strong>${stats.conflicts}</strong></li>` : ''}
+      </ul>
+      <p style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px; font-size: 13px;">
+        💡 <strong>Tip:</strong> Don't forget to click "Save Schedule" when you're done!
+      </p>
+    </div>
+  `;
+
+  Swal.fire({
+    title: 'Proctors Assigned!',
+    html: message,
+    type: 'success',
+    confirmButtonText: 'Got it!'
+  });
+
+  // ✅ REMOVED: this.saveCurrentSchedule(); - Don't auto-save!
+  this.cdr.detectChanges();
+}
+
+// 15. Reset all proctors
+async resetAllProctors() {
+  const result = await Swal.fire({
+    title: 'Reset All Proctors?',
+    text: 'This will clear all proctor assignments.',
+    type: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    confirmButtonText: 'Yes, reset all',
+    cancelButtonText: 'Cancel'
+  });
+  
+  if (result.value) {
+    this.generatedSchedule.forEach(exam => {
+      exam.PROCTOR = '';
+      exam.HAS_CONFLICT = false;
+    });
+    
+    await this.precomputeAllProctorSuggestions();
+    this.computeFilteredProctorList();
+    
+    this.showToast('Reset Complete', 'All proctor assignments cleared');
+    this.saveCurrentSchedule();
+    this.cdr.detectChanges();
+  }
+}
+
+computeFilteredProctorList() {
+  // Clear existing timer
+  if (this.filterDebounceTimer) {
+    clearTimeout(this.filterDebounceTimer);
+  }
+  
+  // Debounce filtering by 300ms
+  this.filterDebounceTimer = setTimeout(() => {
+    this.executeFiltering();
+  }, 300);
+  this.cdr.detectChanges();
+}
+
+// 17. Execute filtering (helper)
+private executeFiltering() {
+  if (!this.generatedSchedule || this.generatedSchedule.length === 0) {
+    this.filteredProctorList = [];
+    return;
+  }
+  
+  console.time('filter-exams');
+  
+  let filtered = this.generatedSchedule;
+  
+  // Search filter
+  const query = (this.proctorSearchQuery || '').toLowerCase().trim();
+  if (query) {
+    filtered = filtered.filter(exam => {
+      const searchable = [
+        exam.CODE,
+        exam.DESCRIPTIVE_TITLE,
+        exam.COURSE,
+        exam.INSTRUCTOR,
+        exam.PROCTOR,
+        exam.ROOM,
+        exam.DAY,
+        exam.SUBJECT_ID,
+        exam.DEPT
+      ]
+        .map(s => (s ? s.toString().toLowerCase() : ""))
+        .join(" ");
+      
+      return searchable.includes(query);
+    });
+  }
+  
+  // Department filter
+  if (this.selectedProctorDept) {
+    const deptQuery = this.selectedProctorDept.toUpperCase().trim();
+    filtered = filtered.filter(exam =>
+      exam.DEPT ? exam.DEPT.toUpperCase().trim() === deptQuery : false
+    );
+  }
+  
+  // Subject filter
+  if (this.selectedProctorSubject) {
+    const subjectQuery = this.selectedProctorSubject.toUpperCase();
+    filtered = filtered.filter(exam =>
+      exam.SUBJECT_ID ? exam.SUBJECT_ID.toUpperCase().includes(subjectQuery) : false
+    );
+  }
+  
+  this.filteredProctorList = filtered;
+  console.timeEnd('filter-exams');
+  console.log(`Filtered: ${filtered.length} / ${this.generatedSchedule.length} exams`);
+}
+
+// 18. Get filtered list (getter)
+get filteredProctorListEnhanced(): ScheduledExam[] {
+  // ✅ Defensive: If filteredProctorList is empty but schedule has data, return schedule
+  if ((!this.filteredProctorList || this.filteredProctorList.length === 0) && 
+      this.generatedSchedule && this.generatedSchedule.length > 0) {
+    console.warn('⚠️ filteredProctorList is empty, returning generatedSchedule');
+    return this.generatedSchedule;
+  }
+  return this.filteredProctorList || [];
+}
+
+// 19. Clear all filters
+clearProctorFilters() {
+  this.proctorSearchQuery = '';
+  this.selectedProctorDept = '';
+  this.selectedProctorSubject = '';
+  this.computeFilteredProctorList();
+}
+
+// 20. Apply filters (called from UI)
+applyProctorFilters() {
+  this.computeFilteredProctorList();
+}
+
+// 21. Get instructor subjects
+getInstructorSubjects(instructor: string): string[] {
+  if (!instructor) return [];
+  const instructorUpper = instructor.toUpperCase().trim();
+  const subjects = this.instructorSubjects.get(instructorUpper);
+  return subjects ? Array.from(subjects).sort() : [];
+}
+
+// 22. Get instructor department
+getInstructorDepartment(instructor: string): string {
+  if (!instructor) return 'Unknown';
+  const instructorUpper = instructor.toUpperCase().trim();
+  return this.instructorDepartments.get(instructorUpper) || 'Unknown';
+}
+
+// 23. Get unique instructor departments
+get uniqueInstructorDepartments(): string[] {
+  return Array.from(new Set(Array.from(this.instructorDepartments.values()))).sort();
+}
+
+// 24. Get unique subjects taught
+get uniqueSubjectsTaught(): string[] {
+  const allSubjects = new Set<string>();
+  this.instructorSubjects.forEach(subjects => {
+    subjects.forEach(subject => allSubjects.add(subject));
+  });
+  return Array.from(allSubjects).sort();
+}
+
+// 25. Statistics getters
+get totalExams(): number {
+  return this.generatedSchedule ? this.generatedSchedule.length : 0;
+}
+
+get assignedExams(): number {
+  if (!this.generatedSchedule) return 0;
+  return this.generatedSchedule.filter(e => 
+    e.PROCTOR && e.PROCTOR !== 'TBD' && !e.HAS_CONFLICT
+  ).length;
+}
+
+get conflictExams(): number {
+  if (!this.generatedSchedule) return 0;
+  return this.generatedSchedule.filter(e => 
+    e.HAS_CONFLICT || !e.PROCTOR || e.PROCTOR === 'TBD'
+  ).length;
+}
+
+get totalProctors(): number {
+  const proctors = new Set<string>();
+  if (this.generatedSchedule) {
+    this.generatedSchedule.forEach(e => {
+      if (e.PROCTOR && e.PROCTOR !== 'TBD') {
+        proctors.add(e.PROCTOR.toUpperCase().trim());
+      }
+    });
+  }
+  return proctors.size;
+}
+
+// 26. Main entry point: View proctor assignments
+async viewProctorAssignments() {
+  console.log('=== Initializing Proctor View ===');
+  console.time('total-init');
+  
+  if (!this.generatedSchedule || this.generatedSchedule.length === 0) {
+    this.showToast('Error', 'No schedule generated yet', 'destructive');
+    return;
+  }
+  
+  // Cancel any ongoing processing
+  this.processingCancelled = true;
+  await this.sleep(50);
+  this.processingCancelled = false;
+  
+  // Step 1: Initialize instructor data (fast)
+  this.initializeInstructorData();
+  
+  // Step 2: Set default proctors (fast)
+  this.generatedSchedule.forEach(exam => {
+    if (!exam.PROCTOR || exam.PROCTOR === 'TBD' || exam.PROCTOR === '') {
+      exam.PROCTOR = exam.INSTRUCTOR;
+    }
+    if (exam.HAS_CONFLICT === undefined) {
+      exam.HAS_CONFLICT = false;
+    }
+  });
+  
+ // Step 3: Pre-compute suggestions (chunked with progress)
+  console.log('Step 3: Pre-computing suggestions...');
+  await this.precomputeAllProctorSuggestions();
+  
+  // ✅ FIX: Initialize filteredProctorList IMMEDIATELY with all exams
+  console.log('Step 4: Initializing filtered list...');
+  this.filteredProctorList = [...this.generatedSchedule];
+  console.log(`✅ filteredProctorList has ${this.filteredProctorList.length} exams`);
+  
+  // ✅ FIX: Reset all filters to ensure everything shows
+  this.proctorSearchQuery = '';
+  this.selectedProctorDept = '';
+  this.selectedProctorSubject = '';
+  
+  // Close loading dialog
+  Swal.close();
+  
+  // ✅ FIX: Switch to proctor view AFTER data is ready
+  console.log('Step 5: Switching to proctor view...');
+  this.currentStep = 'proctor';
+  
+  // ✅ FIX: Force multiple change detection cycles
+  this.cdr.detectChanges();
+  await this.sleep(50);
+  this.cdr.detectChanges();
+  await this.sleep(50);
+  
+  console.timeEnd('total-init');
+  console.log('✅ Proctor view ready');
+  console.log(`  - ${this.generatedSchedule.length} total exams`);
+  console.log(`  - ${this.filteredProctorList.length} displayed`);
+  console.log(`  - Current step: ${this.currentStep}`);
+  
+  // ✅ FIX: Final change detection
+  this.cdr.detectChanges();
+
+}
+
+// 27. Download proctor assignments CSV
+downloadProctorAssignmentsCSV() {
+  if (this.generatedSchedule.length === 0) return;
+
+  const headers = ['Day', 'Time', 'Room', 'Code', 'Subject', 'Course', 'Year', 'Instructor', 'Proctor', 'Has Conflict'];
+  const rows = this.generatedSchedule.map(item => [
+    item.DAY,
+    item.SLOT,
+    item.ROOM,
+    item.CODE,
+    item.DESCRIPTIVE_TITLE,
+    item.COURSE,
+    item.YEAR_LEVEL,
+    item.INSTRUCTOR,
+    item.PROCTOR || 'Not Assigned',
+    item.HAS_CONFLICT ? 'Yes' : 'No'
+  ]);
+
+  let csv = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const fileName = this.selectedExamGroup 
+    ? `${this.selectedExamGroup.name}_Proctor_Assignments.csv`
+    : 'Proctor_Assignments.csv';
+  saveAs(blob, fileName);
+  
+  this.showToast('Downloaded', 'Proctor assignments exported successfully');
+}
+
+// 28. Cleanup on component destroy
+cleanupProctorView() {
+  this.processingCancelled = true;
+  this.proctorSuggestionsMap.clear();
+  this.allProctorsMap.clear();
+  this.filteredProctorList = [];
+  if (this.filterDebounceTimer) {
+    clearTimeout(this.filterDebounceTimer);
+  }
+  console.log('Proctor view cleanup complete');
+}
+
+// 29. Track by function (important for performance)
+trackByExamCode(index: number, exam: ScheduledExam): string {
+  return `${exam.CODE}_${exam.DAY}_${exam.SLOT}`;
+}
+
+
+// ===================================================================
+// ✅ UNSCHEDULED EXAMS METHODS
+// Add these methods to your ExamSchedulerComponent class
+// ===================================================================
+
+// 1. Detect unscheduled exams (call after generateExamSchedule)
+detectUnscheduledExams() {
+  const scheduledCodes = new Set(this.generatedSchedule.map(e => e.CODE));
+  this.unscheduledExams = this.exams.filter(e => !scheduledCodes.has(e.code));
+
+  if (this.unscheduledExams.length > 0) {
+    console.warn('⚠️ Unscheduled exams:', this.unscheduledExams);
+    this.showToast(
+      'Warning',
+      `${this.unscheduledExams.length} exam(s) could not be scheduled.`,
+      'warning'
+    );
+  } else {
+    console.log('✅ All exams scheduled');
+  }
+}
+
+// 2. Toggle unscheduled panel
+toggleUnscheduledPanel() {
+  this.showUnscheduledPanel = !this.showUnscheduledPanel;
+}
+
+// 3. Open unscheduled panel
+openUnscheduledPanel() {
+  console.log('📂 openUnscheduledPanel called');
+
+  const count = this.unscheduledExams ? this.unscheduledExams.length : 0;
+  console.log('Unscheduled exams count:', count);
+
+  if (!this.unscheduledExams || this.unscheduledExams.length === 0) {
+    Swal.fire({
+      title: '✅ All Exams Scheduled',
+      text: 'There are no unscheduled exams.',
+      type: 'success'
+    });
+    return;
+  }
+
+  this.showUnscheduledPanel = true;
+  this.cdr.detectChanges();
+
+  console.log('✅ Panel opened, showUnscheduledPanel =', this.showUnscheduledPanel);
+}
+
+// 4. Edit unscheduled exam
+editUnscheduledExam(exam: Exam) {
+  console.log('✏️ Editing exam:', exam);
+  this.editingUnscheduledExam = exam;
+  this.editFormData = {
+    code: exam.code,
+    subjectId: exam.subjectId,
+    title: exam.title,
+    course: exam.course,
+    yearLevel: exam.yearLevel,
+    instructor: exam.instructor,
+    dept: exam.dept,
+    lec: exam.lec || 0,
+    oe: exam.oe || 0,
+    version: exam.version || ''
+  };
+}
+
+// 5. Cancel edit
+cancelEditUnscheduledExam() {
+  this.editingUnscheduledExam = null;
+  this.editFormData = null;
+}
+
+// 6. Save edited exam and reschedule it
+saveAndRescheduleExam() {
+  if (!this.editingUnscheduledExam || !this.editFormData) {
+    this.showToast('Error', 'No exam selected', 'destructive');
+    return;
+  }
+
+  const updatedExam: Exam = {
+    code: this.editFormData.code,
+    subjectId: this.editFormData.subjectId,
+    title: this.editFormData.title,
+    course: this.editFormData.course,
+    yearLevel: this.editFormData.yearLevel,
+    instructor: this.editFormData.instructor,
+    dept: this.editFormData.dept,
+    lec: this.editFormData.lec || 0,
+    oe: this.editFormData.oe || 0,
+    version: this.editFormData.version || '',
+    studentCount: this.editingUnscheduledExam.studentCount || 0,
+    isRegular: this.editingUnscheduledExam.isRegular || true,
+    campus: this.editingUnscheduledExam.campus || 'MAIN',
+    lectureRoom: this.editingUnscheduledExam.lectureRoom || '',
+    lectureBuilding: this.editingUnscheduledExam.lectureBuilding || ''
+  };
+
+  // Update in main exams array
+  const index = this.exams.findIndex(e => e.code === this.editingUnscheduledExam.code);
+  if (index !== -1) {
+    this.exams[index] = updatedExam;
+  }
+
+  // Remove from unscheduled list
+  this.unscheduledExams = this.unscheduledExams.filter(e => e.code !== updatedExam.code);
+  
+  // Try to schedule it
+  this.scheduleUnscheduledExam(updatedExam);
+
+  this.editingUnscheduledExam = null;
+  this.editFormData = null;
+
+  this.showToast('Success', `Exam ${updatedExam.code} saved and scheduled`);
+  this.saveCurrentSchedule();
+}
+
+// 7. Schedule a single unscheduled exam
+scheduleUnscheduledExam(exam: Exam) {
+  const allRooms = this.rooms.length > 0 ? this.rooms.sort() : ['A', 'C', 'K', 'L', 'M', 'N'];
+  const roomsList = allRooms; // You can add filtering here if needed
+
+  const subjectId = exam.subjectId ? exam.subjectId.toUpperCase().trim() : '';
+  const title = exam.title ? exam.title.toUpperCase().trim() : '';
+  const code = exam.code ? exam.code.toUpperCase().trim() : '';
+
+  // Check if already scheduled
+  const alreadyScheduled = this.generatedSchedule.some(
+    e => e.CODE === code && e.SUBJECT_ID === subjectId
+  );
+  if (alreadyScheduled) {
+    this.showToast('Warning', `Exam ${code} is already scheduled`, 'warning');
+    return;
+  }
+
+  let day = '';
+  let slot = '';
+  let room = '';
+
+  // Find first available slot
+  for (const dayOption of this.days) {
+    if (day) break;
+    
+    for (const slotOption of this.timeSlots) {
+      // Check if slot has room for more exams
+      const slotKey = `${dayOption}-${slotOption}`;
+      const examsInSlot = this.generatedSchedule.filter(e => 
+        e.DAY === dayOption && e.SLOT === slotOption
+      );
+      
+      const usedRooms = new Set(examsInSlot.map(e => e.ROOM));
+      const availableRooms = roomsList.filter(r => !usedRooms.has(r));
+      
+      if (availableRooms.length > 0) {
+        day = dayOption;
+        slot = slotOption;
+        room = availableRooms[0];
+        break;
+      }
+    }
+  }
+
+  if (!day || !slot || !room) {
+    console.warn(`⚠️ No available slots for ${code}`);
+    this.showToast('Error', `No available slots for ${code}`, 'destructive');
+    return;
+  }
+
+  // Add to schedule
+  this.generatedSchedule.push({
+    CODE: exam.code,
+    SUBJECT_ID: exam.subjectId,
+    DESCRIPTIVE_TITLE: exam.title,
+    COURSE: exam.course,
+    YEAR_LEVEL: exam.yearLevel,
+    INSTRUCTOR: exam.instructor,
+    DEPT: exam.dept,
+    OE: exam.oe,
+    DAY: day,
+    SLOT: slot,
+    ROOM: room,
+    UNITS: exam.lec,
+    STUDENT_COUNT: exam.studentCount,
+    IS_REGULAR: exam.isRegular,
+    LECTURE_ROOM: exam.lectureRoom,
+    PROCTOR: exam.instructor || 'TBD',
+    HAS_CONFLICT: false
+  });
+
+  console.log(`✅ Scheduled ${code} at ${day} ${slot} in ${room}`);
+  
+  // Regenerate views
+  this.generateSimpleScheduleData();
+  this.generateCourseGridData();
+  
+  this.showToast('Success', `${code} scheduled at ${day} ${slot}`);
+}
+
+// 8. Delete unscheduled exam
+deleteUnscheduledExam(exam: Exam) {
+  const confirmed = confirm(`Delete exam ${exam.code} - ${exam.title}?`);
+  if (!confirmed) return;
+
+  // Remove from both arrays
+  this.exams = this.exams.filter(e => e.code !== exam.code);
+  this.unscheduledExams = this.unscheduledExams.filter(e => e.code !== exam.code);
+
+  this.showToast('Deleted', `Exam ${exam.code} deleted`);
+  this.saveCurrentSchedule();
+}
+
+// 9. Get unscheduled count (for badge)
+getUnscheduledCount(): number {
+  return this.unscheduledExams ? this.unscheduledExams.length : 0;
+}
+
+// 10. Close unscheduled panel
+closeUnscheduledPanel() {
+  this.showUnscheduledPanel = false;
+  this.editingUnscheduledExam = null;
+  this.editFormData = null;
+}
+
+
+
 
 }
