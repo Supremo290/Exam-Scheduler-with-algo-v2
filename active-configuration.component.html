@@ -1,0 +1,89 @@
+<mat-card class="example-card" id="school-year-setting" style='padding: 0 !important;'>
+  <mat-card-header >
+    <mat-card-title><b>Active Configuration</b></mat-card-title>
+    <mat-card-subtitle><p>NOTE: This page allows you to change the system's active LEVEL and SCHOOL YEAR.<br>
+Just simply select the desired level and schoolyear from the list of available options then click the APPLY button to save your changes.</p></mat-card-subtitle>
+  </mat-card-header>
+  
+  <mat-card-content class='colo'>
+  	<table style="margin-top: 10px">
+  		<tr  *ngIf="
+      global.checkdomain('0001')||
+      global.checkdomain('0002')||
+      global.checkdomain('0003')||
+      global.checkdomain('0004')||
+      global.checkdomain('0005')||
+      global.checkdomain('0006')||
+      global.checkdomain('0008')||
+      global.checkdomain('0009')||
+	  global.checkdomain('0010')||
+      global.checkdomain('0071')||
+      global.checkdomain('0072')||
+      global.checkdomain('0073')">
+  			<td>Program Level: &nbsp; &nbsp;</td>
+  			<td >	
+  				<mat-form-field style="width: 250px">
+				  <mat-label>- Select Program Level -</mat-label>
+				  <mat-select [(ngModel)]="proglevel" >
+				    <mat-option value="ELEMENTARY" *ngIf="global.checkdomain('0071')||global.checkdomain('0072')||global.checkdomain('0073')">
+				      Elementary
+				    </mat-option>
+				    <mat-option  value="HIGHSCHOOL" *ngIf="global.checkdomain('0009') || global.checkdomain('0010')">
+				      High School
+				    </mat-option>
+				    <mat-option  value="COLLEGE" *ngIf="global.checkdomain('0001')||global.checkdomain('0002')||global.checkdomain('0003')||global.checkdomain('0004')||global.checkdomain('0005')||global.checkdomain('0006')">
+				      College
+				    </mat-option>
+				    <mat-option  value="GRADUATE SCHOOL" *ngIf="global.checkdomain('0008')">
+				      Graduate School
+				    </mat-option>
+				  </mat-select>
+				</mat-form-field>
+			</td>
+  		</tr>
+  		<tr *ngIf='proglevel==="COLLEGE"||proglevel==="GRADUATE SCHOOL"'>
+  			<td>Active Term: &nbsp; &nbsp;</td>
+  			<td>	
+  				<mat-form-field style="width: 250px">
+				  <mat-label>- Select Term -</mat-label>
+				  <mat-select [(ngModel)]="activeterm" >
+				    <mat-option value="1">
+				      First Semester
+				    </mat-option>
+				    <mat-option value="2">
+				      Second Semester
+				    </mat-option>
+				    <mat-option value="3">
+				      Summer
+				    </mat-option>
+				  </mat-select>
+				</mat-form-field>
+			</td>
+  		</tr>
+
+  		<tr>
+  			<td>School Year: &nbsp; &nbsp;</td>
+  			<td>	
+  				
+              		<table style="width: 100%">
+              			<tr>
+              				<td>
+              					<mat-form-field style="width: 104px">
+              						<input matInput [(ngModel)]="year1" type="number" min="1900" max="2999" (change)='yearchange1()'>
+              					</mat-form-field>
+              				</td>
+              				<td> &nbsp; to &nbsp; </td>
+              				<td>
+              					<mat-form-field style="width: 104px">
+              						<input matInput [(ngModel)]="year2" type="number" min="1900" max="2999" (change)='yearchange2()'>
+              					</mat-form-field>
+              				</td>
+              			</tr>
+              		</table>
+			</td>
+  		</tr>
+  	</table>
+	  <button mat-raised-button (click)="close()" *ngIf="x!=null">Cancel</button>
+	  <button mat-raised-button color="primary" form="ngForm" (click)="setschoolyear()" style="float: right;">Apply</button><br>&nbsp;
+  </mat-card-content>
+</mat-card>

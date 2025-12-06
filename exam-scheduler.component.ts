@@ -38,6 +38,7 @@ export class ExamSchedulerComponent implements OnInit {
   // State management
  currentStep: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 'simpleschedule' | 'roomgrid' | 'studentmapping' | 'proctor' = 'import';
  isLoadingApi: boolean = false;
+ selectedTabIndex: number = 0;
   
   // Core data
   rawCodes: any[] = [];
@@ -190,9 +191,6 @@ ngOnInit() {
 
   }
 
-  // ===================================================================
-  // HELPER METHODS (Required by new algorithm)
-  // ===================================================================
 
   isGenEdSubject(subjectId: string): boolean {
     const upperSubject = subjectId.toUpperCase();
@@ -242,10 +240,6 @@ ngOnInit() {
     return rooms;
   }
 
-  // ===================================================================
-  // INITIALIZATION METHODS
-  // ===================================================================
-  
   combineYearTerm() {
     const currentYear = new Date().getFullYear();
     for (let y = currentYear - 1; y <= currentYear + 1; y++) {
@@ -263,10 +257,7 @@ ngOnInit() {
     this.savedExamGroups = stored ? JSON.parse(stored) : [];
   }
 
-  // ===================================================================
-  // EXAM GROUP MANAGEMENT
-  // ===================================================================
-  
+
   toggleExamGroupManager() {
     this.showExamGroupManager = !this.showExamGroupManager;
   }
@@ -348,6 +339,10 @@ selectExamGroup(group: ExamGroup) {
   
   this.showExamGroupManager = false;
 }
+
+
+
+
 
 editGroup(group: ExamGroup) {
   const originalData = {
@@ -895,8 +890,7 @@ async generateExamSchedule() {
 
   // ✅ ANGULAR 8 COMPATIBLE: Use then() instead of await
   Swal.fire({
-    title: '🔄 Loading Exam Data',
-    text: 'Fetching exam data from API...',
+    title: 'Generating Exam Schedule',
     allowOutsideClick: false,
     allowEscapeKey: false,
     onBeforeOpen: () => {  // ✅ Angular 8 compatible
@@ -966,26 +960,15 @@ async generateExamSchedule() {
 
     // ✅ ANGULAR 8 COMPATIBLE: Use .then() instead of await
     Swal.fire({
-      title: '✅ Schedule Generated Successfully!',
+      title: 'Schedule Generated Successfully!',
       html: `
-        <div style="text-align: left; padding: 15px;">
-          <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
-            <p style="margin: 0; color: #2e7d32;"><strong>⏱️ Generation Time: ${duration} seconds</strong></p>
-          </div>
           
-          <h4 style="color: #1565C0; margin-bottom: 10px;">📊 Statistics:</h4>
-          <ul style="list-style: none; padding: 0;">
-            <li>✅ Total Exams: <strong>${this.exams.length}</strong></li>
-            <li>✅ Scheduled: <strong>${stats.scheduled}</strong> (${stats.coverage}%)</li>
-            <li>📅 Days: <strong>${numDays}</strong></li>
-            <li>🏫 Rooms Used: <strong>${stats.roomsUsed}</strong></li>
-            <li>⚠️ Conflicts: <strong>${stats.conflicts}</strong></li>
-          </ul>
+      
         </div>
       `,
       type: 'success',  // ✅ Angular 8 uses 'type' not 'icon'
       showCancelButton: true,
-      confirmButtonText: '📋 View Schedule',
+      confirmButtonText: 'View Schedule',
       cancelButtonText: '✖ Close',
       confirmButtonColor: '#10b981',
       cancelButtonColor: '#6b7280',
@@ -1763,10 +1746,10 @@ downloadRoomGridExcel() {
 
   getDeptColor(dept: string): string {
   const colors: { [key: string]: string } = {
-    'SACE': '#ef4444',    // Red
-    'SABH': '#facc15',    // Yellow
-    'SECAP': '#3b82f6',   // Blue
-    'SHAS': '#22c55e'     // Green
+    'SACE': '#d99594',    // Red
+    'SABH': '#FFFF00',    // Yellow
+    'SECAP': '#00b0f0',   // Blue
+    'SHAS': '#92d050'     // Green
   };
   return dept ? colors[dept.toUpperCase()] || '#6b7280' : '#6b7280';
 }
@@ -1780,7 +1763,14 @@ goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 
     return;
   }
   
-  // ✅ FIX: Generate data for each view type
+  // ✅ NEW: When returning to simpleschedule, reset to first tab
+  if (step === 'simpleschedule') {
+    console.log('Preparing simple schedule with tabs...');
+    this.generateSimpleScheduleData();
+    this.resetToFirstTab(); // ← This is new!
+  }
+  
+  // Generate data for each view type
   if (step === 'studentmapping') {
     console.log('Generating student mapping data...');
     this.getStudentMappingData();
@@ -1794,15 +1784,12 @@ goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 
   } else if (step === 'timetable') {
     console.log('Preparing timetable...');
     this.activeDay = this.days[0] || 'Day 1';
-  } else if (step === 'simpleschedule') {
-    console.log('Preparing simple schedule...');
-    this.generateSimpleScheduleData();
   }
   
   // Regular navigation
   this.currentStep = step;
   
-  // ✅ FIX: Multiple change detection cycles
+  // Multiple change detection cycles
   this.cdr.detectChanges();
   setTimeout(() => {
     this.cdr.detectChanges();
@@ -3457,6 +3444,48 @@ closeUnscheduledPanel() {
 }
 
 
+onTabChange(event: any) {
+  console.log('📑 Tab changed to index:', event.index);
+  
+  this.selectedTabIndex = event.index;
+  
+  switch(event.index) {
+    case 0: // Student Mapping
+      console.log('Loading Student Mapping data...');
+      this.getStudentMappingData();
+      break;
+      
+    case 1: // Room Grid
+      console.log('Loading Room Grid data...');
+      if (!this.activeDay || this.activeDay === '') {
+        this.activeDay = this.days[0] || 'Day 1';
+      }
+      break;
+      
+    case 2: // Proctor Assignment
+      console.log('Proctor tab selected - user needs to click button to load');
+      break;
+      
+    // ✅ ADD THESE 4 LINES:
+    case 3: // Complete List
+      console.log('Complete List tab selected');
+      this.onFilterChange();
+      break;
+  }
+  
+  this.cdr.detectChanges();
+}
 
+
+loadProctorViewFromTab() {
+  console.log('🔄 Loading proctor view from tab...');
+  this.goToStep('proctor');
+}
+
+
+resetToFirstTab() {
+  this.selectedTabIndex = 0;
+  this.cdr.detectChanges();
+}
 
 }

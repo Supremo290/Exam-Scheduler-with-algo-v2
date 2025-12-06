@@ -1,0 +1,44 @@
+#school-year-setting{
+	.example-form {
+		  min-width: 150px;
+		  max-width: 580px;
+		  width: 100%;
+		}
+		input {
+		  width: 148px;
+		}
+
+		.example-full-width {
+		  width: 100%;
+		}
+		.example-full-width2 {
+		  width: 169px;
+		}
+		.example-full-width3 {
+		  width: 60px;
+		}
+
+		::ng-deep .mat-card-header {
+		    background-color: #294a70 !important;
+		    padding: 15px 5px 5px 5px !important;
+		    color:white;
+		}
+		::ng-deep .mat-card-header * {
+		    color:white;
+		}
+
+		::ng-deep .mat-card {
+		    padding: 0 !important;
+		}
+
+		::ng-deep .mat-card-content {
+		    padding: 15px !important;
+		}
+
+		.mat-form-field-infix{
+		  width: auto !important;
+		}
+		mat-card{
+			padding: 0 !important;
+		}
+}
