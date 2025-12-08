@@ -29,6 +29,16 @@ import {
   ProctorStatistics
 } from '../subject-code';
 
+import { 
+  convertTo12HourFormat, 
+  getFilteredTimeSlots, 
+  getDisplayTimeSlots,
+  getTimeSlotsForDay,
+  getDisplayTimeSlotsForDay,
+  isSlotIncluded,
+  TimeSlotConfig 
+} from './time-utils';
+
 @Component({
   selector: 'app-exam-scheduler',
   templateUrl: './exam-scheduler.component.html',
@@ -54,11 +64,13 @@ export class ExamSchedulerComponent implements OnInit {
   days: string[] = ['Day 1', 'Day 2', 'Day 3'];
   activeDay: string = 'Day 1';
   
-  // Time slots (1.5 hour intervals)
-  timeSlots: string[] = [
+allTimeSlots: string[] = [
   '7:30-9:00', '9:00-10:30', '10:30-12:00', '12:00-13:30',
   '13:30-15:00', '15:00-16:30', '16:30-18:00', '18:00-19:30'
 ];
+
+timeSlots: string[] = []; // Will be dynamically generated
+displayTimeSlots: string[] = []; 
   
   // Term selection
   activeTerm: string = '';
@@ -120,6 +132,7 @@ export class ExamSchedulerComponent implements OnInit {
   private filteredProctorList: ScheduledExam[] = [];
   private processingCancelled = false;
   private filterDebounceTimer: any;
+  private deptProgramMap: Map<string, Set<string>> = new Map();
   
   // ===================================================================
   // ✅ UNSCHEDULED EXAMS PROPERTIES
@@ -157,6 +170,7 @@ ngOnInit() {
     this.selectedExamGroup = null;
     
     this.loadSavedExamGroups();
+    this.updateTimeSlotsFromExamGroup();
     
     this.sharedData.selectedExamGroup$.subscribe(group => {
       if (group) {
@@ -164,7 +178,9 @@ ngOnInit() {
         this.examDates = group.days.map(d => 
           d.date ? new Date(d.date).toLocaleDateString('en-CA') : ''
         );
+        this.updateTimeSlotsFromExamGroup();
         this.activeTerm = group.termYear || '';
+        this.updateTimeSlotsFromExamGroup();
       }
     });
     
@@ -252,6 +268,82 @@ ngOnInit() {
     }
   }
 
+  /**
+ * Update time slots based on selected exam group's AM/PM configuration
+ */
+updateTimeSlotsFromExamGroup() {
+  if (!this.selectedExamGroup || !this.selectedExamGroup.days) {
+    this.timeSlots = [...this.allTimeSlots];
+    this.displayTimeSlots = this.allTimeSlots.map(slot => convertTo12HourFormat(slot));
+    return;
+  }
+
+  const allSameConfig = this.selectedExamGroup.days.every(day => 
+    day.am === this.selectedExamGroup!.days[0].am && 
+    day.pm === this.selectedExamGroup!.days[0].pm
+  );
+
+  if (allSameConfig) {
+    const firstDay = this.selectedExamGroup.days[0];
+    this.timeSlots = getFilteredTimeSlots(firstDay.am, firstDay.pm);
+    this.displayTimeSlots = this.timeSlots.map(slot => convertTo12HourFormat(slot));
+  } else {
+    this.timeSlots = [...this.allTimeSlots];
+    this.displayTimeSlots = this.allTimeSlots.map(slot => convertTo12HourFormat(slot));
+  }
+
+  console.log('✅ Time slots updated:', this.timeSlots);
+  console.log('✅ Display time slots:', this.displayTimeSlots);
+}
+
+getTimeSlotsForSpecificDay(dayIndex: number): string[] {
+  if (!this.selectedExamGroup || !this.selectedExamGroup.days || 
+      dayIndex >= this.selectedExamGroup.days.length) {
+    return this.timeSlots;
+  }
+  return getTimeSlotsForDay(dayIndex, this.selectedExamGroup.days);
+}
+
+getDisplayTimeSlotsForSpecificDay(dayIndex: number): string[] {
+  if (!this.selectedExamGroup || !this.selectedExamGroup.days || 
+      dayIndex >= this.selectedExamGroup.days.length) {
+    return this.displayTimeSlots;
+  }
+  return getDisplayTimeSlotsForDay(dayIndex, this.selectedExamGroup.days);
+}
+
+shouldShowSlotForDay(slot: string, dayIndex: number): boolean {
+  if (!this.selectedExamGroup || !this.selectedExamGroup.days || 
+      dayIndex >= this.selectedExamGroup.days.length) {
+    return true;
+  }
+  const dayConfig = this.selectedExamGroup.days[dayIndex];
+  return isSlotIncluded(slot, { am: dayConfig.am, pm: dayConfig.pm });
+}
+
+formatSlotFor12Hour(slot: string): string {
+  return convertTo12HourFormat(slot);
+}
+
+getTimeRangeForDay(dayIndex: number): string {
+  if (!this.selectedExamGroup || !this.selectedExamGroup.days || 
+      dayIndex >= this.selectedExamGroup.days.length) {
+    return '';
+  }
+  
+  const day = this.selectedExamGroup.days[dayIndex];
+  
+  if (day.am && day.pm) {
+    return '7:30 AM - 7:30 PM';
+  } else if (day.am) {
+    return '7:30 AM - 12:00 PM';
+  } else if (day.pm) {
+    return '12:00 PM - 7:30 PM';
+  }
+  
+  return '';
+}
+
   loadSavedExamGroups() {
     const stored = localStorage.getItem('examGroups');
     this.savedExamGroups = stored ? JSON.parse(stored) : [];
@@ -263,81 +355,33 @@ ngOnInit() {
   }
 
 selectExamGroup(group: ExamGroup) {
-  console.log('🔵 selectExamGroup called for:', group.name);
-  
-  this.selectedExamGroup = group;
-  this.activeTerm = group.termYear || '';
-  
-  this.examDates = group.days
-    .map(d => d.date ? new Date(d.date).toLocaleDateString('en-CA') : '')
-    .filter(d => d !== '');
-  
-  this.days = this.examDates.map((_, i) => `Day ${i + 1}`);
-  
-  this.sharedData.setSelectedExamGroup(group);
-  this.sharedData.setExamDates(group.days);
-  if (group.termYear) this.sharedData.setActiveTerm(group.termYear);
-  
-  const scheduleExists = this.hasScheduleForGroup(group.name, group.termYear || '');
-  console.log('📋 Schedule exists?', scheduleExists);
-  
-  if (scheduleExists) {
-    console.log('✅ Showing dialog to load saved schedule');
-    
-    // ✅ ANGULAR 8 COMPATIBLE: Use type and .then()
-    Swal.fire({
-      title: 'Saved Schedule Found!',
-      text: 'This exam group already has a generated schedule. Would you like to load it?',
-      type: 'question',  // ✅ Angular 8 uses 'type' not 'icon'
-      showCancelButton: true,
-      confirmButtonText: '📋 Load Saved Schedule',
-      cancelButtonText: '✖ Cancel',
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280'
-    }).then((result) => {  // ✅ Use .then() for Angular 8
-      console.log('📘 Dialog result:', result);
-      
-      // ✅ ANGULAR 8 COMPATIBLE: Check result.value
-      if (result.value) {
-        console.log('✅ User clicked Load Saved Schedule');
-        
-        if (this.loadScheduleForGroup(group.name, group.termYear || '')) {
-          console.log('✅ Schedule loaded successfully');
-          
-          // Prepare data
-          this.generateSimpleScheduleData();
-          
-          // Reset filters
-          this.selectedCourse = 'ALL';
-          this.selectedYearLevel = 'ALL';
-          this.selectedDepartment = 'ALL';
-          this.selectedDay = 'ALL';
-          this.searchTerm = '';
-          
-          // ✅ Use setTimeout for safer navigation
-          setTimeout(() => {
-            this.currentStep = 'simpleschedule';
-            this.cdr.detectChanges();
-            
-            console.log('✅ Navigation complete. Current step:', this.currentStep);
-          }, 100);
-          
-          this.showToast('Success', `Loaded saved schedule for "${group.name}"`);
-        } else {
-          console.error('❌ Failed to load schedule');
-          this.showToast('Error', 'Failed to load saved schedule');
-        }
-      } else {
-        console.log('❌ User clicked Cancel');
-        this.showToast('Success', `Selected "${group.name}" - Ready to load API data`);
-      }
-    });
-  } else {
-    console.log('ℹ️ No saved schedule found - just selecting group');
-    this.showToast('Success', `Selected "${group.name}" with ${this.examDates.length} exam days`);
+  if (this.selectedExamGroup && this.selectedExamGroup.name === group.name) {
+    return;
   }
+
+  this.selectedExamGroup = group;
+  this.sharedData.setSelectedExamGroup(group);
+  this.sharedData.setActiveTerm(group.termYear || '');
+  this.activeTerm = group.termYear || '';
+
+  this.examDates = group.days.map(d => 
+    d.date ? new Date(d.date).toLocaleDateString('en-CA') : ''
+  );
+
+  // ✅ ADD THIS LINE
+  this.updateTimeSlotsFromExamGroup();
+
+  this.showToast('Success', `Exam group "${group.name}" selected`);
   
-  this.showExamGroupManager = false;
+  const savedMapping = this.sharedData.getStudentMappingForGroup(
+    group.name, 
+    group.termYear || ''
+  );
+  if (savedMapping) {
+    console.log(`📂 Found saved mapping for ${group.name}`);
+  }
+
+  this.cdr.detectChanges();
 }
 
 
@@ -926,24 +970,33 @@ async generateExamSchedule() {
     // Small delay to ensure UI updates
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    const numDays = this.examDates.filter(d => d).length;
-    const startTime = Date.now();
-    
-    this.generatedSchedule = algorithmGenerateSchedule(
-      this.exams,
-      this.rooms,
-      numDays
-    );
+   const numDays = this.examDates.filter(d => d).length;
+   const startTime = Date.now();
+
+   const dayConfigs = this.selectedExamGroup!.days.map(day => ({
+  am: day.am,
+  pm: day.pm
+}));
+
+this.generatedSchedule = algorithmGenerateSchedule(
+  this.exams,
+  this.rooms,
+  numDays,
+  dayConfigs
+);
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     const stats = this.calculateScheduleStats();
 
     Swal.close();
+
+    
     
     // ✅ CRITICAL: Prepare data BEFORE showing dialog
     console.log('📋 Preparing schedule data...');
     this.generateSimpleScheduleData();
+    this.buildDeptProgramMapping();
     
     // Reset filters
     this.selectedCourse = 'ALL';
@@ -1461,6 +1514,30 @@ saveCurrentSchedule() {
 }
 
 
+buildDeptProgramMapping() {
+  console.log('🔗 Building department-program mapping...');
+  
+  this.deptProgramMap.clear();
+  
+  this.generatedSchedule.forEach(exam => {
+    const dept = exam.DEPT ? exam.DEPT.toUpperCase().trim() : '';
+    const course = exam.COURSE ? exam.COURSE.trim() : '';
+    
+    if (dept && course) {
+      if (!this.deptProgramMap.has(dept)) {
+        this.deptProgramMap.set(dept, new Set());
+      }
+      this.deptProgramMap.get(dept)!.add(course);
+    }
+  });
+  
+  console.log('✅ Department-Program mapping built:');
+  this.deptProgramMap.forEach((programs, dept) => {
+    console.log(`  ${dept}: ${Array.from(programs).join(', ')}`);
+  });
+}
+
+
   // ===================================================================
   // EDITING METHODS
   // ===================================================================
@@ -1901,6 +1978,7 @@ goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 
   
   // Prepare data
   this.generateSimpleScheduleData();
+  this.buildDeptProgramMapping();
   
   // Reset filters
   this.selectedCourse = 'ALL';
@@ -1937,10 +2015,27 @@ generateSimpleScheduleData() {
 
 getUniqueCourses(): string[] {
   console.log('🔍 Getting unique courses...');
-  const courses = new Set<string>();
-  this.generatedSchedule.forEach(exam => {
-    if (exam.COURSE) courses.add(exam.COURSE);
-  });
+  console.log('Selected department:', this.selectedDepartment);
+  
+  let courses = new Set<string>();
+  
+  // If a department is selected, only show programs under that department
+  if (this.selectedDepartment && this.selectedDepartment !== 'ALL') {
+    const deptPrograms = this.deptProgramMap.get(this.selectedDepartment);
+    if (deptPrograms) {
+      courses = deptPrograms;
+      console.log(`✅ Filtered to ${courses.size} programs for ${this.selectedDepartment}`);
+    } else {
+      console.warn(`⚠️ No programs found for department: ${this.selectedDepartment}`);
+    }
+  } else {
+    // Show all programs
+    this.generatedSchedule.forEach(exam => {
+      if (exam.COURSE) courses.add(exam.COURSE);
+    });
+    console.log(`✅ Showing all ${courses.size} programs`);
+  }
+  
   const result = ['ALL', ...Array.from(courses).sort()];
   console.log('✅ Unique courses:', result);
   return result;
@@ -2040,8 +2135,52 @@ formatTimeForDisplay(slot: string): string {
 }
 
 onFilterChange() {
-    this.updateFilteredSchedule();
+  console.log('🔄 Filter changed');
+  console.log('  Department:', this.selectedDepartment);
+  console.log('  Course:', this.selectedCourse);
+  
+  // If department filter changed and current course is not valid for this department
+  if (this.selectedDepartment && this.selectedDepartment !== 'ALL') {
+    const deptPrograms = this.deptProgramMap.get(this.selectedDepartment);
+    
+    if (deptPrograms && this.selectedCourse !== 'ALL') {
+      // Check if selected course belongs to selected department
+      if (!deptPrograms.has(this.selectedCourse)) {
+        console.log(`⚠️ Resetting course filter - ${this.selectedCourse} not in ${this.selectedDepartment}`);
+        this.selectedCourse = 'ALL';
+      }
+    }
   }
+  
+  this.updateFilteredSchedule();
+}
+
+
+
+onDepartmentFilterChange() {
+  console.log('🏢 Department filter changed to:', this.selectedDepartment);
+  
+  // If department changed, reset course to ALL
+  // The UI will automatically update to show only courses for that department
+  if (this.selectedDepartment && this.selectedDepartment !== 'ALL') {
+    const deptPrograms = this.deptProgramMap.get(this.selectedDepartment);
+    
+    if (deptPrograms && this.selectedCourse !== 'ALL') {
+      // Check if current selected course belongs to new department
+      if (!deptPrograms.has(this.selectedCourse)) {
+        console.log(`🔄 Resetting course to ALL (${this.selectedCourse} not in ${this.selectedDepartment})`);
+        this.selectedCourse = 'ALL';
+      }
+    }
+  }
+  
+  // Trigger the standard filter change
+  this.onFilterChange();
+  
+  // Force UI update to refresh dropdown options
+  this.cdr.detectChanges();
+}
+
 
 getDayName(day: string): string {
   // Map Day 1, Day 2, Day 3 to actual exam dates
