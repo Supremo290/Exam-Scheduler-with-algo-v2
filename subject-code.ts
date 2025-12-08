@@ -213,3 +213,8 @@ export interface ProctorStatistics {
   sameDept: number;
   perfect: number;
 }
+
+interface DayTimeConfig {
+  am: boolean;
+  pm: boolean;
+}
