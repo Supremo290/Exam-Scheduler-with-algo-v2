@@ -368,8 +368,57 @@ selectExamGroup(group: ExamGroup) {
     d.date ? new Date(d.date).toLocaleDateString('en-CA') : ''
   );
 
-  // ✅ ADD THIS LINE
   this.updateTimeSlotsFromExamGroup();
+
+  // ✅ CHECK FOR SAVED SCHEDULE
+  if (group.termYear && this.hasScheduleForGroup(group.name, group.termYear)) {
+    console.log(`📂 Found saved schedule for ${group.name}`);
+    
+    const loaded = this.loadScheduleForGroup(group.name, group.termYear);
+    
+    if (loaded && this.generatedSchedule.length > 0) {
+      Swal.fire({
+        title: '✅ Schedule Loaded',
+        html: `
+          <div style="text-align: left; padding: 15px;">
+            <p><strong>Exam Group:</strong> ${group.name}</p>
+            <p><strong>Term:</strong> ${this.getTermYearLabel(group.termYear || '')}</p>
+            <p><strong>Exams:</strong> ${this.generatedSchedule.length}</p>
+            <br>
+            <p style="color: #10b981;">✅ Loaded saved schedule from localStorage</p>
+          </div>
+        `,
+        type: 'success',
+        confirmButtonText: 'View Schedule',
+        showCancelButton: true,
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#0d6efd',
+        cancelButtonColor: '#f44336',
+      }).then((result) => {
+        if (result.value) {
+          // Prepare data before navigating
+          this.generateSimpleScheduleData();
+          this.buildDeptProgramMapping();
+          
+          // Reset filters
+          this.selectedCourse = 'ALL';
+          this.selectedYearLevel = 'ALL';
+          this.selectedDepartment = 'ALL';
+          this.selectedDay = 'ALL';
+          this.searchTerm = '';
+          
+          // Navigate to schedule view
+          setTimeout(() => {
+            this.currentStep = 'simpleschedule';
+            this.cdr.detectChanges();
+          }, 100);
+        }
+      });
+      
+      this.cdr.detectChanges();
+      return; // Exit early - don't show the "selected" toast
+    }
+  }
 
   this.showToast('Success', `Exam group "${group.name}" selected`);
   
@@ -420,10 +469,10 @@ editGroup(group: ExamGroup) {
           text: `You changed the exam dates for "${updatedGroup.name}". The existing schedule is now outdated. Would you like to regenerate the schedule now?`,
           type: 'question',  // ✅ Angular 8 uses 'type'
           showCancelButton: true,
-          confirmButtonText: '🔄 Regenerate Now',
-          cancelButtonText: '📋 Keep Old Schedule',
+          confirmButtonText: 'Regenerate Now',
+          cancelButtonText: 'Keep Old Schedule',
           confirmButtonColor: '#10b981',
-          cancelButtonColor: '#6b7280'
+          cancelButtonColor: '#f44336'
         }).then((choice) => {  // ✅ Use .then()
           if (choice.value) {  // ✅ Check choice.value
             this.regenerateScheduleForGroup(updatedGroup);
@@ -957,16 +1006,6 @@ async generateExamSchedule() {
       return;
     }
 
-    Swal.fire({
-      title: '🧠 Generating Schedule',
-      text: `Processing ${this.exams.length} exams...`,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      onBeforeOpen: () => {
-        Swal.showLoading();
-      }
-    });
-
     // Small delay to ensure UI updates
     await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -1015,16 +1054,14 @@ this.generatedSchedule = algorithmGenerateSchedule(
     Swal.fire({
       title: 'Schedule Generated Successfully!',
       html: `
-          
-      
         </div>
       `,
       type: 'success',  // ✅ Angular 8 uses 'type' not 'icon'
       showCancelButton: true,
       confirmButtonText: 'View Schedule',
       cancelButtonText: '✖ Close',
-      confirmButtonColor: '#10b981',
-      cancelButtonColor: '#6b7280',
+      confirmButtonColor: '#0d6efd',
+      cancelButtonColor: '#dc3545',
       allowOutsideClick: false
     }).then((result) => {  // ✅ Use .then() for Angular 8
       // ✅ ANGULAR 8 COMPATIBLE: Check result.value
@@ -1066,6 +1103,16 @@ this.generatedSchedule.forEach(exam => {
     exam.HAS_CONFLICT = false;
   }
 });
+}
+
+
+
+getSubjectCodeCount(subjectId: string): number {
+  if (!subjectId) return 0;
+  
+  return this.generatedSchedule.filter(exam => 
+    exam.SUBJECT_ID === subjectId
+  ).length;
 }
 
   calculateScheduleStats(): any {
@@ -1871,6 +1918,53 @@ goToStep(step: 'import' | 'generate' | 'summary' | 'timetable' | 'coursegrid' | 
   setTimeout(() => {
     this.cdr.detectChanges();
   }, 50);
+
+  
+}
+
+goBackToExamGroups() {
+  console.log('🔙 Navigating back to exam groups...');
+  
+  Swal.fire({
+    title: 'Return to Exam Groups?',
+    html: `
+      <div style="text-align: left; padding: 10px;">
+        <p>Go back to exam group selection?</p>
+        <p style="color: #6b7280; font-size: 14px; margin-top: 10px;">
+          Your current schedule will be preserved.
+        </p>
+      </div>
+    `,
+    type: 'question',
+    showCancelButton: true,
+    confirmButtonText: '← Back to Groups',
+    cancelButtonText: 'Stay Here',
+    confirmButtonColor: '#3b82f6',
+    cancelButtonColor: '#6b7280',
+    reverseButtons: true
+  }).then((result) => {
+    if (result.value) {
+      this.currentStep = 'import';
+      this.cdr.detectChanges();
+      
+      this.showToast('Navigation', 'Returned to exam group selection', 'info');
+    }
+  });
+}
+
+
+/**
+ * Quick navigation without confirmation
+ */
+quickBackToExamGroups() {
+  console.log('🔙 Quick back to exam groups...');
+  this.currentStep = 'import';
+  this.cdr.detectChanges();
+}
+
+
+isCompleteListTabActive(): boolean {
+  return this.selectedTabIndex === 3; // Complete List is tab index 3
 }
 
 
@@ -3605,7 +3699,6 @@ onTabChange(event: any) {
       console.log('Proctor tab selected - user needs to click button to load');
       break;
       
-    // ✅ ADD THESE 4 LINES:
     case 3: // Complete List
       console.log('Complete List tab selected');
       this.onFilterChange();

@@ -1,6 +1,7 @@
 import { Component, Inject, OnInit, Optional } from '@angular/core';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { SharedDataService } from '../shared-data.service';
+import Swal from 'sweetalert2';
 
 interface ExamDay {
   date: Date | null;
@@ -126,25 +127,45 @@ export class DatePickerComponent implements OnInit {
     }));
   }
 
-  saveGroup() {
+saveGroup() {
   const validDays = this.examDays.filter(d => d.date instanceof Date);
 
+  // ❌ Validation: No valid dates
   if (!validDays.length) {
-    alert('Please select at least one valid exam date.');
+    Swal.fire({
+      title: 'Missing Dates',
+      text: 'Please select at least one valid exam date.',
+      type: 'warning',
+      confirmButtonText: 'OK',
+      confirmButtonColor: '#f59e0b'
+    });
     return;
   }
 
+  // ❌ Validation: No group name
   if (!this.newGroupName.trim()) {
-    alert('Please enter a name for this exam schedule.');
+    Swal.fire({
+      title: 'Missing Group Name',
+      text: 'Please enter a name for this exam schedule.',
+      type: 'warning',
+      confirmButtonText: 'OK',
+      confirmButtonColor: '#f59e0b'
+    });
     return;
   }
 
+  // ❌ Validation: No term/year selected
   if (!this.selectedTermYear) {
-    alert('Please select a Term & School Year for this exam schedule.');
+    Swal.fire({
+      title: 'Missing Term & Year',
+      text: 'Please select a Term & School Year for this exam schedule.',
+      type: 'warning',
+      confirmButtonText: 'OK',
+      confirmButtonColor: '#f59e0b'
+    });
     return;
   }
 
-  // ✅ IMPORTANT: Store numeric code (e.g., "2023241") for API
   const updatedGroup: ExamGroup = {
     name: this.newGroupName.trim(),
     days: validDays,
@@ -154,10 +175,10 @@ export class DatePickerComponent implements OnInit {
   console.log('💾 Saving group with termYear:', this.selectedTermYear);
 
   if (this.editingGroup) {
-    // ✅ FIXED: Use findIndex with name comparison instead of indexOf with object reference
+    // EDIT MODE
     const index = this.savedExamGroups.findIndex(g => g.name === this.editingGroup.name);
     console.log('🔍 Looking for group:', this.editingGroup.name);
-    console.log('📍 Found at index:', index);
+    console.log('🔍 Found at index:', index);
     
     if (index !== -1) {
       console.log('✅ Updating group at index:', index);
@@ -177,23 +198,78 @@ export class DatePickerComponent implements OnInit {
       console.error('❌ ERROR: Could not find group to update!');
       console.error('❌ Available groups:', this.savedExamGroups.map(g => g.name));
     }
-    alert('✏️ Exam group updated! Your schedule data has been preserved.');
+
+    // ✅ SUCCESS: Edit mode
+    Swal.fire({
+      title: '✅ Group Updated!',
+      html: `
+        <div style="text-align: left; padding: 10px;">
+          <p><strong>Exam Group:</strong> ${updatedGroup.name}</p>
+          <p><strong>Term:</strong> ${this.getTermYearLabel(updatedGroup.termYear!)}</p>
+          <p><strong>Dates:</strong> ${validDays.length} day(s)</p>
+          <br>
+          <p style="color: #10b981;">Your schedule data has been preserved.</p>
+        </div>
+      `,
+      type: 'success',
+      confirmButtonText: 'OK',
+      confirmButtonColor: '#10b981'
+    });
+
   } else {
+    // ADD NEW MODE
     const existingIndex = this.savedExamGroups.findIndex(
       g => g.name === updatedGroup.name
     );
 
     if (existingIndex !== -1) {
-      if (confirm(`"${updatedGroup.name}" already exists. Replace it?`)) {
-        this.savedExamGroups[existingIndex] = updatedGroup;
-      } else {
-        return;
-      }
+      // ⚠️ Duplicate name warning
+      Swal.fire({
+        title: 'Duplicate Name',
+        text: `"${updatedGroup.name}" already exists. Replace it?`,
+        type: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Replace',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#3b82f6',
+        cancelButtonColor: '#6b7280'
+      }).then((result) => {
+        if (result.value) {
+          this.savedExamGroups[existingIndex] = updatedGroup;
+          this.saveAllGroups();
+          this.loadStoredGroups();
+
+          // ✅ SUCCESS: Replaced
+          Swal.fire({
+            title: '✅ Group Replaced!',
+            text: `"${updatedGroup.name}" has been updated.`,
+            type: 'success',
+            confirmButtonColor: '#10b981'
+          });
+
+          if (this.dialogRef) {
+            this.dialogRef.close({ success: true, group: updatedGroup });
+          }
+        }
+      });
+      return;
     } else {
       this.savedExamGroups.push(updatedGroup);
-    }
 
-    alert('✅ Exam group saved!');
+      // ✅ SUCCESS: New group added
+      Swal.fire({
+        title: '✅ Group Saved!',
+        html: `
+          <div style="text-align: left; padding: 10px;">
+            <p><strong>Exam Group:</strong> ${updatedGroup.name}</p>
+            <p><strong>Term:</strong> ${this.getTermYearLabel(updatedGroup.termYear!)}</p>
+            <p><strong>Dates:</strong> ${validDays.length} day(s)</p>
+          </div>
+        `,
+        type: 'success',
+        confirmButtonColor: '#10b981'
+      });
+    }
   }
 
   this.saveAllGroups();
@@ -204,8 +280,51 @@ export class DatePickerComponent implements OnInit {
   }
 }
 
-  deleteGroup(groupName: string) {
-    if (confirm(`Delete exam group "${groupName}"?`)) {
+private getTermYearLabel(termYearCode: string): string {
+  if (!termYearCode) return 'Unknown';
+  
+  // If already in text format, return as-is
+  if (termYearCode.includes('Semester') || termYearCode.includes('Summer')) {
+    return termYearCode;
+  }
+  
+  // Convert numeric code to readable format
+  // Format: "2023241" → "1st Semester SY 2023-2024"
+  if (/^\d{7}$/.test(termYearCode)) {
+    const termMap: any = { 
+      '1': '1st Semester', 
+      '2': '2nd Semester', 
+      '3': 'Summer' 
+    };
+    const termCode = termYearCode.slice(-1);
+    const year1 = termYearCode.slice(0, 4);
+    const year2 = '20' + termYearCode.slice(4, 6);
+    
+    return `${termMap[termCode] || 'Unknown'} SY ${year1}-${year2}`;
+  }
+  
+  return 'Unknown';
+}
+
+deleteGroup(groupName: string) {
+  Swal.fire({
+    title: 'Delete Exam Group?',
+    html: `
+      <div style="text-align: left; padding: 15px;">
+        <p style="margin-bottom: 15px;">Delete exam group <strong>"${groupName}"</strong>?</p>
+        <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">⚠️ This will also delete any saved schedules.</p>
+        <p style="color: #6b7280; font-size: 14px;">This action cannot be undone.</p>
+      </div>
+    `,
+    type: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#3b82f6',
+    cancelButtonColor: '#6b7280',
+    reverseButtons: true
+  }).then((result) => {
+    if (result.value) {
       const groupToDelete = this.savedExamGroups.find(g => g.name === groupName);
       
       const currentlySelected = this.sharedData.getSelectedExamGroup();
@@ -229,32 +348,66 @@ export class DatePickerComponent implements OnInit {
         
         this.sharedData.clearStudentMapping();
         
-        alert(`⚠️ Deleted "${groupName}". All associated data has been cleared.`);
+        Swal.fire({
+          title: 'Deleted with Data',
+          html: `
+            <div style="text-align: left; padding: 10px;">
+              <p><strong>"${groupName}"</strong> has been deleted.</p>
+              <p style="color: #f59e0b; margin-top: 10px;">
+                ⚠️ All associated data has been cleared since this was the active group.
+              </p>
+            </div>
+          `,
+          type: 'warning',
+          confirmButtonColor: '#f59e0b'
+        });
       } else {
         if (groupToDelete && groupToDelete.termYear) {
           this.sharedData.clearStudentMappingForGroup(groupName, groupToDelete.termYear);
           console.log(`🗑️ Cleared student mapping for "${groupName}" (${groupToDelete.termYear})`);
         }
         
-        alert(`✅ Deleted "${groupName}".`);
+        Swal.fire({
+          title: '✅ Deleted',
+          text: `"${groupName}" has been deleted successfully.`,
+          type: 'success',
+          confirmButtonColor: '#10b981'
+        });
       }
     }
-  }
+  });
+}
 
-  selectGroup(group: ExamGroup) {
-    this.selectedGroupName = group.name;
-    
-    this.sharedData.setExamDates(group.days);
-    this.sharedData.setSelectedExamGroup(group);
-    
-    if (group.termYear) {
-      this.sharedData.setActiveTerm(group.termYear);
-      console.log(`✅ Set term to: ${group.termYear}`);
-    }
-    
-    console.log(`✅ Selected "${group.name}" with ${group.days.length} days:`, group.days);
-    alert(`✅ Selected "${group.name}" for scheduling.`);
+selectGroup(group: ExamGroup) {
+  this.selectedGroupName = group.name;
+  
+  this.sharedData.setExamDates(group.days);
+  this.sharedData.setSelectedExamGroup(group);
+  
+  if (group.termYear) {
+    this.sharedData.setActiveTerm(group.termYear);
+    console.log(`✅ Set term to: ${group.termYear}`);
   }
+  
+  console.log(`✅ Selected "${group.name}" with ${group.days.length} days:`, group.days);
+  
+  Swal.fire({
+    title: '✅ Group Selected',
+    html: `
+      <div style="text-align: left; padding: 10px;">
+        <p><strong>Exam Group:</strong> ${group.name}</p>
+        <p><strong>Term:</strong> ${this.getTermYearLabel(group.termYear || '')}</p>
+        <p><strong>Dates:</strong> ${group.days.length} day(s)</p>
+        <br>
+        <p style="color: #10b981;">This group is now active for scheduling.</p>
+      </div>
+    `,
+    type: 'success',
+    confirmButtonColor: '#10b981',
+    timer: 2000,
+    showConfirmButton: false
+  });
+}
 
   closeDialog() {
     if (this.dialogRef) {
