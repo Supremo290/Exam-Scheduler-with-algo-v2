@@ -4,48 +4,49 @@
     {{ editingGroup ? 'Edit Exam Group' : 'Add New Exam Group' }}
   </h2>
 
-  <!-- Term & School Year Selector -->
+  <!-- ✅ CHANGED: Display active term as read-only info instead of dropdown -->
+  <div style="padding: 15px; margin-bottom: 20px; background-color: #e3f2fd; border-left: 4px solid #1565C0; border-radius: 4px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <mat-icon style="color: #1565C0;">info</mat-icon>
+      <div>
+        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">Active Term & School Year:</div>
+        <div style="font-size: 16px; font-weight: 500; color: #1565C0;">
+          {{ activeTermLabel || 'Not Set' }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Name Input -->
   <mat-form-field appearance="outline" style="width: 100%; margin-bottom: 15px;">
-    <mat-label>Term & School Year</mat-label>
-    <mat-select [(ngModel)]="selectedTermYear">
-      <mat-option *ngFor="let opt of termYearOptions" [value]="opt.value">
-        {{ opt.label }}
+    <mat-label>Exam Group Name</mat-label>
+    <mat-select [(ngModel)]="newGroupName">
+      <mat-option *ngFor="let groupName of examGroupOptions" [value]="groupName">
+        {{ groupName }}
       </mat-option>
     </mat-select>
   </mat-form-field>
-
-  <!-- Group Name Input -->
- <mat-form-field appearance="outline" style="width: 100%; margin-bottom: 15px;">
-  <mat-label>Exam Group Name</mat-label>
-  <mat-select [(ngModel)]="newGroupName">
-    <mat-option *ngFor="let groupName of examGroupOptions" [value]="groupName">
-      {{ groupName }}
-    </mat-option>
-  </mat-select>
-</mat-form-field>
 
   <!-- Date Picker Inputs -->
   <div style="margin-bottom: 20px;">
     <h4 style="color: #666; margin-bottom: 10px;">Exam Dates</h4>
     
     <div *ngFor="let day of examDays; let i = index" style="margin-bottom: 15px;">
-  <div style="display: flex; align-items: center; gap: 10px;">
-    <!-- ✅ UPDATED MAT-FORM-FIELD WITH (ngModelChange) ⬇️ -->
-    <mat-form-field appearance="outline" style="flex: 1;">
-      <mat-label>Exam Date {{ i + 1 }}</mat-label>
-      <input 
-        matInput 
-        [matDatepicker]="picker" 
-        [(ngModel)]="day.date"
-        (ngModelChange)="onDateChange(day)"
-        [matDatepickerFilter]="dateFilter">
-      <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
-      <mat-datepicker #picker></mat-datepicker>
-    </mat-form-field>
-    <!-- ✅ UPDATED MAT-FORM-FIELD WITH (ngModelChange) ⬆️ -->
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <mat-form-field appearance="outline" style="flex: 1;">
+          <mat-label>Exam Date {{ i + 1 }}</mat-label>
+          <input 
+            matInput 
+            [matDatepicker]="picker" 
+            [(ngModel)]="day.date"
+            (ngModelChange)="onDateChange(day)"
+            [matDatepickerFilter]="dateFilter">
+          <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+          <mat-datepicker #picker></mat-datepicker>
+        </mat-form-field>
 
-    <mat-checkbox [(ngModel)]="day.am" style="min-width: 60px;">AM</mat-checkbox>
-    <mat-checkbox [(ngModel)]="day.pm" style="min-width: 60px;">PM</mat-checkbox>
+        <mat-checkbox [(ngModel)]="day.am" style="min-width: 60px;">AM</mat-checkbox>
+        <mat-checkbox [(ngModel)]="day.pm" style="min-width: 60px;">PM</mat-checkbox>
 
         <button 
           *ngIf="examDays.length > 1" 
@@ -94,45 +95,13 @@
     </button>
   </div>
 
-  <!-- Validation Messages -->
+  <!-- ✅ UPDATED: Validation message no longer mentions Term & Year -->
   <div *ngIf="isFormInvalid()" 
        style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; font-size: 13px; color: #856404;">
     <mat-icon style="vertical-align: middle; font-size: 18px;">info</mat-icon>
     <span style="margin-left: 5px;">
-      Please fill in all required fields: Term & Year, Group Name, and at least one Exam Date
+      Please fill in all required fields: Group Name and at least one Exam Date
     </span>
   </div>
 
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

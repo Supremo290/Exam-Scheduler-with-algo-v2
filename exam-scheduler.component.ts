@@ -448,7 +448,11 @@ editGroup(group: ExamGroup) {
   const dialogRef = this.dialog.open(DatePickerComponent, {
     width: '800px',
     maxHeight: '90vh',
-    data: { group, mode: 'edit' }
+    data: { 
+      group, 
+      mode: 'edit',
+      activeTermYear: group.termYear || this.global.syear // Use group's term or active config
+    }
   });
 
   dialogRef.afterClosed().subscribe((result) => {
@@ -2012,10 +2016,17 @@ isCompleteListTabActive(): boolean {
   }
 
   openDatePickerDialog() {
+    // ✅ Get active term from GlobalService (active configuration)
+    const activeTermYear = this.global.syear; // This comes from active configuration
+    
     const dialogRef = this.dialog.open(DatePickerComponent, {
       width: '800px',
       maxHeight: '90vh',
-      disableClose: false
+      disableClose: false,
+      data: { 
+        activeTermYear: activeTermYear,
+        mode: 'add'
+      }
     });
 
     dialogRef.afterClosed().subscribe(() => {
